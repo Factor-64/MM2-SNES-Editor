@@ -1,0 +1,148 @@
+﻿{
+  "configurations": [
+    {
+      "name": "x64-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": ""
+    },
+    {
+      "name": "x64-Release",
+      "generator": "Ninja",
+      "configurationType": "Release",
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "variables": [
+        {
+          "name": "SDL_HIDAPI_JOYSTICK",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_HAPTIC",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_XINPUT",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_DEPS_SHARED",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_VIDEO",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_AVX512F",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_AUDIO",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_AVX2",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_AVX",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_HIDAPI",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_JOYSTICK",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_TRAY",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_TEST_LIBRARY",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_SSE4_2",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_SSE4_1",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_LIBUDEV",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_OFFSCREEN",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_MMX",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_POWER",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_SSE3",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_SSE2",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_SSE",
+          "value": "True",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_SENSOR",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "SDL_PRESEED",
+          "value": "True",
+          "type": "BOOL"
+        }
+      ]
+    }
+  ]
+}
