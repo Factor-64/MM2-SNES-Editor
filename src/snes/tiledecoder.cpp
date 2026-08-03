@@ -1,5 +1,5 @@
 #include "tiledecoder.h"
-#include <iostream>
+#include <print>
 
 Tile decodeSNES4bppTile(const uint8_t* t)
 {
@@ -27,6 +27,57 @@ Tile decodeSNES4bppTile(const uint8_t* t)
     }
 
     return out;
+}
+
+Tile decodeSNES2bppTile(const uint8_t* t)
+{
+    Tile out;
+
+    for (int row = 0; row < 8; ++row)
+    {
+        uint8_t b0 = t[row * 2 + 0]; // plane 0
+        uint8_t b1 = t[row * 2 + 1]; // plane 1
+
+        for (int bit = 7; bit >= 0; --bit)
+        {
+            uint8_t p0 = (b0 >> bit) & 1;
+            uint8_t p1 = (b1 >> bit) & 1;
+
+            uint8_t color = (p1 << 1) | p0; // 0–3
+
+            int x = 7 - bit;
+            out.pixels[row * 8 + x] = color;
+        }
+    }
+
+    return out;
+}
+
+void encodeSNES2bppTile(uint8_t* out, const Tile& t)
+{
+    // SNES/NES 2bpp tile = 16 bytes:
+    // rows 0–7:
+    //   byte 0: plane 0 (bit 0 of each pixel)
+    //   byte 1: plane 1 (bit 1 of each pixel)
+
+    for (int row = 0; row < 8; ++row)
+    {
+        uint8_t p0 = 0;
+        uint8_t p1 = 0;
+
+        for (int x = 0; x < 8; ++x)
+        {
+            uint8_t pix = t.pixels[row * 8 + x] & 0x3; // 0–3 (2bpp)
+
+            int bit = 7 - x; // leftmost pixel → bit 7
+
+            p0 |= ((pix >> 0) & 1) << bit; // plane 0
+            p1 |= ((pix >> 1) & 1) << bit; // plane 1
+        }
+
+        out[row * 2 + 0] = p0;
+        out[row * 2 + 1] = p1;
+    }
 }
 
 void encodeSNES4bppTile(uint8_t* out, const Tile& t)
@@ -73,11 +124,12 @@ void saveTileToROM(Tile& t, std::vector<uint8_t>& rom)
     std::copy(encoded, encoded + 32, rom.begin() + t.romAddress);
 }
 
-std::vector<Tile> decodeTileRanges(const std::vector<Range>& ranges,const std::vector<uint8_t>& rom)
+std::vector<Tile> decodeTileRanges(const std::vector<Range>& ranges, const std::vector<uint8_t>& rom, const int tileSize)
 {
     std::vector<Tile> out;
 
-    const int tileSize = 32; // SNES 4bpp tile = 32 bytes
+    // SNES 4bpp tile = 32 bytes
+    // SNES 2bpp tile = 16 bytes
 
     for(const auto& r : ranges)
     {
@@ -85,7 +137,11 @@ std::vector<Tile> decodeTileRanges(const std::vector<Range>& ranges,const std::v
 
         while (pos + tileSize <= r.end)
         {
-            Tile t = decodeSNES4bppTile(&rom[pos]);
+            Tile t;
+            if (tileSize == 16)
+                t = decodeSNES2bppTile(&rom[pos]);
+            else if (tileSize == 32)
+                t = decodeSNES4bppTile(&rom[pos]);
             t.romAddress = pos;
             out.push_back(t);
             pos += tileSize;
@@ -134,21 +190,18 @@ void saveMetaTilePalettes(std::vector<uint8_t>& rom, uint32_t addr, const std::v
     }
 }
 
-
-std::vector<MetaTileData> decodeMetaTile32(const std::vector<uint8_t>& rom, uint32_t addr, int count)
+std::vector<MetaTileData> decodeMetaTile32NES(const std::vector<uint8_t>& rom, uint32_t addr, int count)
 {
     std::vector<MetaTileData> out;
 
-    int metaCount = count / 4;
-
-    for (int m = 0; m < metaCount; ++m)
+    for (int m = 0; m < count; m += 4)
     {
         uint16_t idx[4];
         uint8_t  data[4];
 
         for (int i = 0; i < 4; ++i)
         {
-            uint8_t b = rom[addr + (m * 4 + i)];
+            uint8_t b = rom[addr + (m + i)];
 
             data[i] = (b >> 6) & 0x03;
             idx[i] = b & 0x3F;
@@ -174,7 +227,33 @@ std::vector<MetaTileData> decodeMetaTile32(const std::vector<uint8_t>& rom, uint
     return out;
 }
 
-void encodeMetaTile32(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<MetaTileData>& metaTiles)
+std::vector<MetaTileData> decodeMetaTile32SNES(const std::vector<uint8_t>& rom, uint32_t addr, uint32_t collision, int count)
+{
+    std::vector<MetaTileData> out;
+
+    for (int m = 0; m < count; m += 4)
+    {
+        MetaTileData mt;
+
+        mt.tileIndexes[0] = rom[addr + (0 + m)]; // TL
+        mt.collision[0] = rom[collision + (0 + m)];
+
+        mt.tileIndexes[1] = rom[addr + (2 + m)]; // TR
+        mt.collision[1] = rom[collision + (2 + m)];
+
+        mt.tileIndexes[2] = rom[addr + (1 + m)]; // BL
+        mt.collision[2] = rom[collision + (1 + m)];
+
+        mt.tileIndexes[3] = rom[addr + (3 + m)]; // BR
+        mt.collision[3] = rom[collision + (3 + m)];
+
+        out.push_back(mt);
+    }
+
+    return out;
+}
+
+void encodeMetaTile32NES(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<MetaTileData>& metaTiles)
 {
     for (size_t m = 0; m < metaTiles.size(); ++m)
     {
@@ -192,3 +271,59 @@ void encodeMetaTile32(std::vector<uint8_t>& rom, uint32_t addr, const std::vecto
     }
 }
 
+void encodeMetaTile32SNES(std::vector<uint8_t>& rom, uint32_t addr, uint32_t collision, const std::vector<MetaTileData>& metaTiles)
+{
+    for (size_t i = 0; i < metaTiles.size(); ++i)
+    {
+        size_t m = i * 4;
+        const MetaTileData& mt = metaTiles[i];
+
+        rom[addr + (m + 0)] = mt.tileIndexes[0];
+        rom[addr + (m + 1)] = mt.tileIndexes[2];
+        rom[addr + (m + 2)] = mt.tileIndexes[1];
+        rom[addr + (m + 3)] = mt.tileIndexes[3];
+        rom[collision + (m + 0)] = mt.collision[0];
+        rom[collision + (m + 1)] = mt.collision[2];
+        rom[collision + (m + 2)] = mt.collision[1];
+        rom[collision + (m + 3)] = mt.collision[3];
+    }
+}
+
+std::vector<BGTileData> loadBackgroundTileData(std::vector<uint8_t>& rom, uint32_t addr, int count)
+{
+    std::vector<BGTileData> out;
+    for (int i = 0; i < count; i += 2)
+    {
+        BGTileData td;
+
+        td.tileId = rom[addr + i];
+        uint8_t attr = rom[addr + (i + 1)];
+        td.vramPage = attr & 0x03;
+        td.palette = ((attr >> 2) & 0x07);
+        td.highPriority = (attr & 0x20) != 0;
+        td.hFlip = (attr & 0x40) != 0;
+        td.vFlip = (attr & 0x80) != 0;
+
+        out.push_back(td);
+    }
+    return out;
+}
+
+void saveBackgroundTileData(std::vector<uint8_t>& rom, uint32_t addr, std::vector<BGTileData> data)
+{
+    for (int i = 0; i < data.size(); ++i)
+    {
+        const BGTileData& td = data[i];
+
+        rom[addr + i * 2] = td.tileId;
+
+        uint8_t attr = 0;
+        attr |= (td.vramPage & 0x03);
+        attr |= (td.palette & 0x07) << 2;
+        attr |= td.highPriority ? 0x20 : 0;
+        attr |= td.hFlip ? 0x40 : 0;
+        attr |= td.vFlip ? 0x80 : 0;
+
+        rom[addr + i * 2 + 1] = attr;
+    }
+}

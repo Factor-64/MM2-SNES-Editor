@@ -1,33 +1,33 @@
 #pragma once
 #include <imgui.h>
 
-namespace MainMenu {
+enum MenuState {
+    MS_NULL,
+    MS_OpenLoadROM,
+    MS_OpenLoadJson,
+    MS_OpenLoadPal,
+    MS_ExportGraphics,
+    MS_ExportMetaTiles,
+    MS_ExportMetaTilePal,
+    MS_ExportLayout,
+    MS_ExportCollision,
+    MS_ExportScroll,
+    MS_ExportLayer2Data,
+    MS_ExportLayer3Data,
+    MS_ExportEnemy,
+    MS_ExportItem,
+    MS_ExportMidpoint,
+    MS_ExportPatternTable,
+    MS_ExportPalette,
+    MS_ExportLayer2Palette,
+    MS_ExportLayer3Palette,
+    MS_ExportPaletteAnimation,
+    MS_ExportCommonGFX,
+    MS_ExportBGGFX,
+    MS_ImportData,
+    MS_ExportAllData,
+    MS_OpenExportROM,
+    MS_OpenHeaderWindow
+};
 
-    struct State {
-        bool openLoadRom = false;
-        bool openLoadJson = false;
-        bool openLoadPal = false;
-
-        bool exportGraphics = false;
-        bool exportMetaTiles = false;
-        bool exportMetaTilePal = false;
-        bool exportLayout = false;
-        bool exportScroll = false;
-        bool exportEnemy = false;
-        bool exportItem = false;
-        bool exportMidpoint = false;
-        bool exportPatternTable = false;
-        bool exportPalette = false;
-        bool exportPaletteAnimation = false;
-        bool exportCommonGFX = false;
-        bool importData = false;
-        bool exportAllLevelData = false;
-
-        bool openExportRom = false;
-        bool openSettings = false;
-        bool openHeaderWindow = false;
-    };
-
-    void Draw(State& state, const bool romLoaded, const bool jsonLoaded);
-
-}
+void drawMenu(MenuState& state, const bool romLoaded, const bool jsonLoaded, const bool isNES);

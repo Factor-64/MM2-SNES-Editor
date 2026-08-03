@@ -3,47 +3,61 @@
 	"16bit": {
 		"gfx": {
 			"heat_man": {
-				"ranges": ["18:4000-18:5400","18:0000-18:2000"]
+				"layer12": ["18:4000-18:5400", "30:0000-30:6000"],
+				"layer3": ["30:4000-30:6000"]
 			},
 			"air_man": {
-				"ranges": ["18:C000-18:D400","18:8000-18:A000"]
+				"layer12": ["18:C000-18:D400", "30:6000-30:C000"],
+				"layer3": ["30:A000-30:C000"]
 			},
 			"wood_man": {
-				"ranges": ["19:4000-19:5400","19:0000-19:2000"]
+				"layer12": ["19:4000-19:5400", "31:0000-31:6000"],
+				"layer3": ["31:4000-31:6000"]
 			},
 			"bubble_man": {
-				"ranges": ["19:C000-19:D400","19:8000-19:A000"]
+				"layer12": ["19:C000-19:D400", "31:6000-31:C000"],
+				"layer3": ["31:A000-31:C000"]
 			},
 			"quick_man": {
-				"ranges": ["1A:4000-1A:5400","1A:0000-1A:2000"]
+				"layer12": ["1A:4000-1A:5400", "32:0000-32:6000"],
+				"layer3": ["32:4000-32:6000"]
 			},
 			"flash_man": {
-				"ranges": ["1A:C000-1A:D400","1A:8000-1A:A000"]
+				"layer12": ["1A:C000-1A:D400", "32:6000-32:C000"],
+				"layer3": ["32:A000-32:C000"]
 			},
 			"metal_man": {
-				"ranges": ["1B:4000-1B:5400","1B:0000-1B:2000"]
+				"layer12": ["1B:4000-1B:5400", "33:0000-33:6000"],
+				"layer3": ["33:4000-33:6000"]
 			},
 			"crash_man": {
-				"ranges": ["1B:C000-1B:D400","1B:8000-1B:A000"]
+				"layer12": ["1B:C000-1B:D400", "33:6000-33:C000"],
+				"layer3": ["33:A000-33:C000"]
 			},
 			"wily_1": {
-				"ranges": ["18:5400-18:6800","1D:0000-1D:2000"]
+				"layer12": ["18:5400-18:6800", "34:0000-34:6000"],
+				"layer3": ["34:4000-34:6000"]
 			},
 			"wily_2": {
-				"ranges": ["18:D400-18:E7E0","1D:2000-1D:4000"]
+				"layer12": ["18:D400-18:E7E0", "34:6000-34:C000"],
+				"layer3": ["34:A000-34:C000"]
 			},
 			"wily_3": {
-				"ranges": ["18:D400-18:DC00","19:5400-19:5E00","1D:4000-1D:6000"]
+				"layer12": ["18:D400-18:DC00", "19:5400-19:5E00", "35:0000-35:6000"],
+				"layer3": ["35:4000-35:6000"]
 			},
 			"wily_4": {
-				"ranges": ["18:D400-18:DC00","19:D400-19:E000","1D:6000-1D:8000"]
+				"layer12": ["18:D400-18:DC00", "19:D400-19:E000", "36:0000-36:6000"],
+				"layer3": ["36:4000-36:6000"]
 			},
 			"wily_5": {
-				"ranges": ["11:5800-11:5C00","1C:8C00-1C:8E00","1A:5400-1A:5600","1A:5400-1A:6800","1D:8000-1D:A000"],
+				"layer12": ["11:5800-11:5C00", "1C:8C00-1C:8E00", "1A:5400-1A:5600", "1A:5400-1A:6800", "37:0000-37:6000"],
+				"layer3": ["37:4000-37:6000"],
 				"common": 0
 			},
 			"wily_6": {
-				"ranges": ["19:5C00-19:7000","1D:A000-1D:C000"]
+				"layer12": ["19:5C00-19:7000", "39:0000-39:6000"],
+				"layer3": ["39:4000-39:6000"]
 			},
 			"common": {
 				"blank_tiles_ladders_doors_misc1": "1C:8000-1C:8400",
@@ -56,7 +70,9 @@
 				"chip32x32": "20:8000",
 				"chip32x32_palette": "20:8400",
 				"map": "20:8500",
+				"collision": "20:9000",
 				"scroll": "20:B400",
+				"bg_tilemap": "38:0000",
 				"enemy": {
 					"screen": "20:B600",
 					"x": "20:B700",
@@ -87,7 +103,9 @@
 					"anime_frame_count": "20:BE00",
 					"anime_frame_timer": "20:BE01",
 					"data": "01:0800",
-					"anime_palette": "01:5370"
+					"anime_palette": "01:5370",
+					"layer3": "01:4AA0",
+					"layer2": "01:4A50"
 				}
 			},
 
@@ -95,7 +113,9 @@
 				"chip32x32": "21:8000",
 				"chip32x32_palette": "21:8400",
 				"map": "21:8500",
+				"collision": "21:9000",
 				"scroll": "21:B400",
+				"bg_tilemap": "38:2000",
 				"enemy": {
 					"screen": "21:B600",
 					"x": "21:B700",
@@ -126,7 +146,9 @@
 					"anime_frame_count": "21:BE00",
 					"anime_frame_timer": "21:BE01",
 					"data": "01:0A00",
-					"anime_palette": "01:5390"
+					"anime_palette": "01:5390",
+					"layer3": "01:4B40",
+					"layer2": "01:4AF0"
 				}
 			},
 
@@ -134,7 +156,9 @@
 				"chip32x32": "22:8000",
 				"chip32x32_palette": "22:8400",
 				"map": "22:8500",
+				"collision": "22:9000",
 				"scroll": "22:B400",
+				"bg_tilemap": "38:4000",
 				"enemy": {
 					"screen": "22:B600",
 					"x": "22:B700",
@@ -165,7 +189,9 @@
 					"anime_frame_count": "22:BE00",
 					"anime_frame_timer": "22:BE01",
 					"data": "01:0C00",
-					"anime_palette": "01:53B0"
+					"anime_palette": "01:53B0",
+					"layer3": "01:4B40",
+					"layer2": "01:4B90"
 				}
 			},
 
@@ -173,7 +199,9 @@
 				"chip32x32": "23:8000",
 				"chip32x32_palette": "23:8400",
 				"map": "23:8500",
+				"collision": "23:9000",
 				"scroll": "23:B400",
+				"bg_tilemap": "38:6000",
 				"enemy": {
 					"screen": "23:B600",
 					"x": "23:B700",
@@ -204,7 +232,9 @@
 					"anime_frame_count": "23:BE00",
 					"anime_frame_timer": "23:BE01",
 					"data": "01:0E00",
-					"anime_palette": "01:53D0"
+					"anime_palette": "01:53D0",
+					"layer3": "01:4C80",
+					"layer2": "01:4C30"
 				}
 			},
 
@@ -212,7 +242,9 @@
 				"chip32x32": "24:8000",
 				"chip32x32_palette": "24:8400",
 				"map": "24:8500",
+				"collision": "24:9000",
 				"scroll": "24:B400",
+				"bg_tilemap": "2F:0000",
 				"enemy": {
 					"screen": "24:B600",
 					"x": "24:B700",
@@ -243,7 +275,9 @@
 					"anime_frame_count": "24:BE00",
 					"anime_frame_timer": "24:BE01",
 					"data": "01:1000",
-					"anime_palette": "01:53F0"
+					"anime_palette": "01:53F0",
+					"layer3": "01:4D20",
+					"layer2": "01:4CD0"
 				}
 			},
 
@@ -251,7 +285,9 @@
 				"chip32x32": "25:8000",
 				"chip32x32_palette": "25:8400",
 				"map": "25:8500",
+				"collision": "25:9000",
 				"scroll": "25:B400",
+				"bg_tilemap": "2F:2000",
 				"enemy": {
 					"screen": "25:B600",
 					"x": "25:B700",
@@ -282,7 +318,9 @@
 					"anime_frame_count": "25:BE00",
 					"anime_frame_timer": "25:BE01",
 					"data": "01:1200",
-					"anime_palette": "01:5410"
+					"anime_palette": "01:5410",
+					"layer3": "01:4DC0",
+					"layer2": "01:4D70"
 				}
 			},
 
@@ -290,7 +328,9 @@
 				"chip32x32": "26:8000",
 				"chip32x32_palette": "26:8400",
 				"map": "26:8500",
+				"collision": "26:9000",
 				"scroll": "26:B400",
+				"bg_tilemap": "2F:4000",
 				"enemy": {
 					"screen": "26:B600",
 					"x": "26:B700",
@@ -321,7 +361,9 @@
 					"anime_frame_count": "26:BE00",
 					"anime_frame_timer": "26:BE01",
 					"data": "01:1400",
-					"anime_palette": "01:5430"
+					"anime_palette": "01:5430",
+					"layer3": "01:4E10",
+					"layer2": "01:4D70"
 				}
 			},
 
@@ -329,7 +371,9 @@
 				"chip32x32": "27:8000",
 				"chip32x32_palette": "27:8400",
 				"map": "27:8500",
+				"collision": "27:9000",
 				"scroll": "27:B400",
+				"bg_tilemap": "2F:6000",
 				"enemy": {
 					"screen": "27:B600",
 					"x": "27:B700",
@@ -360,7 +404,9 @@
 					"anime_frame_count": "27:BE00",
 					"anime_frame_timer": "27:BE01",
 					"data": "01:1600",
-					"anime_palette": "01:5450"
+					"anime_palette": "01:5450",
+					"layer3": "01:4F00",
+					"layer2": "01:4EB0"
 				}
 			},
 		  
@@ -368,6 +414,7 @@
 				"chip32x32": "20:8000",
 				"chip32x32_palette": "20:8400",
 				"map": "20:8500",
+				"collision": "20:9000",
 				"scroll": "20:B400",
 				"enemy": {
 					"screen": "20:B600",
@@ -399,7 +446,9 @@
 					"anime_frame_count": "20:BF00",
 					"anime_frame_timer": "20:BF01",
 					"data": "01:1800",
-					"anime_palette": "01:5470"
+					"anime_palette": "01:5470",
+					"layer3": "01:4FA0",
+					"layer2": "01:4F50"
 				}
 			},
 
@@ -407,6 +456,7 @@
 				"chip32x32": "21:8000",
 				"chip32x32_palette": "21:8400",
 				"map": "21:8500",
+				"collision": "21:9000",
 				"scroll": "21:B400",
 				"enemy": {
 					"screen": "21:B600",
@@ -438,7 +488,9 @@
 					"anime_frame_count": "21:BF00",
 					"anime_frame_timer": "21:BF01",
 					"data": "01:1A00",
-					"anime_palette": "01:5490"
+					"anime_palette": "01:5490",
+					"layer3": "01:5040",
+					"layer2": "01:4FF0"
 				}
 			},
 
@@ -446,6 +498,7 @@
 				"chip32x32": "22:8000",
 				"chip32x32_palette": "22:8400",
 				"map": "22:8500",
+				"collision": "22:9000",
 				"scroll": "22:B400",
 				"enemy": {
 					"screen": "22:B600",
@@ -477,7 +530,9 @@
 					"anime_frame_count": "22:BF00",
 					"anime_frame_timer": "22:BF01",
 					"data": "01:1C00",
-					"anime_palette": "01:54B0"
+					"anime_palette": "01:54B0",
+					"layer3": "01:50E0",
+					"layer2": "01:5090"
 				}
 			},
 
@@ -485,6 +540,7 @@
 				"chip32x32": "23:8000",
 				"chip32x32_palette": "23:8400",
 				"map": "23:8500",
+				"collision": "23:9000",
 				"scroll": "23:B400",
 				"enemy": {
 					"screen": "23:B600",
@@ -516,7 +572,9 @@
 					"anime_frame_count": "23:BF00",
 					"anime_frame_timer": "23:BF01",
 					"data": "01:1E00",
-					"anime_palette": "01:54D0"
+					"anime_palette": "01:54D0",
+					"layer3": "01:5180",
+					"layer2": "01:5130"
 				}
 			},
 
@@ -524,6 +582,7 @@
 				"chip32x32": "24:8000",
 				"chip32x32_palette": "24:8400",
 				"map": "24:8500",
+				"collision": "24:9000",
 				"scroll": "24:B400",
 				"enemy": {
 					"screen": "24:B600",
@@ -555,7 +614,9 @@
 					"anime_frame_count": "24:BF00",
 					"anime_frame_timer": "24:BF01",
 					"data": "01:2000",
-					"anime_palette": "01:54F0"
+					"anime_palette": "01:54F0",
+					"layer3": "01:5220",
+					"layer2": "01:51D0"
 				}
 			},
 
@@ -563,6 +624,7 @@
 				"chip32x32": "25:8000",
 				"chip32x32_palette": "25:8400",
 				"map": "25:8500",
+				"collision": "25:9000",
 				"scroll": "25:B400",
 				"enemy": {
 					"screen": "25:B600",
@@ -594,7 +656,9 @@
 					"anime_frame_count": "25:BF00",
 					"anime_frame_timer": "25:BF01",
 					"data": "01:2200",
-					"anime_palette": "01:5510"
+					"anime_palette": "01:5510",
+					"layer3": "01:52C0",
+					"layer2": "01:5270"
 				}
 			}
 		}
@@ -602,47 +666,47 @@
 	"8bit": {
 		"gfx": {
 			"heat_man": {
-				"ranges": "10:4000-10:5400"
+				"layer12": "10:4000-10:5400"
 			},
 			"air_man": {
-				"ranges": "10:C000-10:D400"
+				"layer12": "10:C000-10:D400"
 			},
 			"wood_man": {
-				"ranges": "11:4000-11:5400"
+				"layer12": "11:4000-11:5400"
 			},
 			"bubble_man": {
-				"ranges": "11:C000-11:D400"
+				"layer12": "11:C000-11:D400"
 			},
 			"quick_man": {
-				"ranges": "12:4000-12:5400"
+				"layer12": "12:4000-12:5400"
 			},
 			"flash_man": {
-				"ranges": "12:C000-12:D400"
+				"layer12": "12:C000-12:D400"
 			},
 			"metal_man": {
-				"ranges": "13:4000-13:5400"
+				"layer12": "13:4000-13:5400"
 			},
 			"crash_man": {
-				"ranges": "13:C000-13:D400"
+				"layer12": "13:C000-13:D400"
 			},
 			"wily_1": {
-				"ranges": "10:5400-10:6800"
+				"layer12": "10:5400-10:6800"
 			},
 			"wily_2": {
-				"ranges": "10:D400-10:E7E0"
+				"layer12": "10:D400-10:E7E0"
 			},
 			"wily_3": {
-				"ranges": ["10:D400-10:DC00", "11:5400-11:5E00"]
+				"layer12": ["10:D400-10:DC00", "11:5400-11:5E00"]
 			},
 			"wily_4": {
-				"ranges": ["10:D400-10:DC00", "11:D400-11:E000"]
+				"layer12": ["10:D400-10:DC00", "11:D400-11:E000"]
 			},
 			"wily_5": {
-				"ranges": ["09:5800-09:5C00","14:8C00-14:8E00","12:5400-12:5600","12:5400-12:6800"],
+				"layer12": ["09:5800-09:5C00","14:8C00-14:8E00","12:5400-12:5600","12:5400-12:6800"],
 				"common": 0
 			},
 			"wily_6": {
-				"ranges": "11:5C00-11:7000"
+				"layer12": "11:5C00-11:7000"
 			},
 			"common": {
 				"blank_tiles_ladders_doors_misc1": "14:8000-14:8400",

@@ -2306,7 +2306,7 @@ void App::drawLevelView()
         ImGui::Text("Hold Left Click to Drag an Object");
         ImGui::Text("Left Click an Object in the List to jump to it");
         ImGui::Text("Right Click an Object in the List for context menu");
-        ImGui::Text("WARNING: Insert Above/Below shifts all objects up/down so the first/last Object will be overwritten");
+        ImGui::Text("WARNING: Insert Above and Below shift all objects up or down so the first and last Objects will be overwritten");
     }
     ImGui::Separator();
 

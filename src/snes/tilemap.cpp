@@ -1,5 +1,5 @@
 #include "tilemap.h"
-#include <iostream>
+#include <print>
 
 TileMap makeTileMap(const std::vector<Tile>& atlas, int mapWidth, uint8_t shape)
 {
@@ -206,7 +206,7 @@ MetaTileData convertToMetaTileData(const MetaTile& mt)
     return out;
 }
 
-void saveMetaTilesToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, const std::vector<MetaTile>& levelMetaTiles)
+void saveMetaTilesToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, uint32_t collision, const std::vector<MetaTile>& levelMetaTiles)
 {
     std::vector<MetaTileData> encoded;
 
@@ -214,7 +214,10 @@ void saveMetaTilesToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t palad
     for (const MetaTile& mt : levelMetaTiles)
         encoded.push_back(convertToMetaTileData(mt));
 
-    encodeMetaTile32(rom, addr, encoded);
+    if (collision != 0)
+        encodeMetaTile32SNES(rom, addr, collision, encoded);
+    else
+        encodeMetaTile32NES(rom, addr, encoded);
     saveMetaTilePalettes(rom, paladdr, encoded);
 }
 
@@ -363,5 +366,64 @@ void renderMetaTileWindowToRGBA(
                 py
             );
         }
+    }
+}
+
+Tile applyFlips(const Tile& src, bool hFlip, bool vFlip)
+{
+    Tile t = src;
+
+    for (int y = 0; y < 8; ++y)
+    {
+        for (int x = 0; x < 8; ++x)
+        {
+            int sx = hFlip ? (7 - x) : x;
+            int sy = vFlip ? (7 - y) : y;
+            t.pixels[y * 8 + x] = src.pixels[sy * 8 + sx];
+        }
+    }
+    return t;
+}
+
+void renderBGTileMapToRGBA(
+    const std::vector<BGTileData>& bgTileData,
+    int screenWidth, // in tiles
+    const std::vector<Tile>& atlas,
+    const Palettes& palettes,
+    const ColorRGBA& bgColor,
+    std::vector<ColorRGBA>& outPixels,
+    int& outW,
+    int& outH)
+{
+    int rows = (bgTileData.size() + screenWidth - 1) / screenWidth;
+    outW = screenWidth * 8;
+    outH = rows * 8;
+
+    outPixels.resize(outW * outH, bgColor);
+
+    for (int i = 0; i < bgTileData.size(); ++i)
+    {
+        const BGTileData& td = bgTileData[i];
+
+        int tileX = (i % screenWidth) * 8;
+        int tileY = (i / screenWidth) * 8;
+
+        int id = td.tileId + (td.vramPage * 256);
+
+        const Tile& srcTile = atlas[id];
+
+        Tile tile = applyFlips(srcTile, td.hFlip, td.vFlip);
+
+        const Palette& pal = palettes[td.palette];
+
+        blitTileToRGBA(
+            tile,
+            pal,
+            bgColor,
+            outPixels.data(),
+            outW,
+            tileX,
+            tileY
+        );
     }
 }

@@ -7,6 +7,7 @@ struct PalAnimation {
     uint8_t frame_count = 0;
     int maxFrameCount = 0;
     uint8_t frame_timer = 0;
+    uint8_t palette_bits = 0;
     std::vector<Palette> frames;
 };
 

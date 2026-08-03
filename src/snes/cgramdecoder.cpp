@@ -165,6 +165,7 @@ PalAnimation loadAnimatedPalettes(std::vector<uint8_t>& rom, uint32_t count_addr
     Palettes current = palettes;
 
     uint8_t yy = rom[ptr++];
+    anim.palette_bits = yy;
 
     for (int f = 0; f < anim.frame_count; ++f)
     {
@@ -212,7 +213,7 @@ void writeAnimatedPalettes(std::vector<uint8_t>& rom, uint32_t pal_addr, bool hi
         bool used = false;
         for (const auto& c : anim.frames[i])
         {
-            if (c.a != 0 || c.r != 0 || c.g != 0 || c.b != 0)
+            if (c.r != 0 || c.g != 0 || c.b != 0)
             {
                 used = true;
                 break;

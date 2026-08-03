@@ -31,42 +31,60 @@ static Range parseRange(const std::string& s, const bool hiROM)
 static GFXData parseGfxEntry(const json& j, const bool hiROM)
 {
     GFXData out;
-
     
-    if (j.contains("ranges"))
+    if (j.contains("layer12"))
     {
-        auto& r = j["ranges"];
+        auto r = j["layer12"];
 
         if (r.is_string())
         {
-            out.ranges.push_back(parseRange(r.get<std::string>(), hiROM));
+            out.layer12.push_back(parseRange(r.get<std::string>(), hiROM));
         }
         else if (r.is_array())
         {
             for (auto& e : r)
-                out.ranges.push_back(parseRange(e.get<std::string>(), hiROM));
+                out.layer12.push_back(parseRange(e.get<std::string>(), hiROM));
         }
         else if (r.is_object())
         {
             for (auto it = r.begin(); it != r.end(); ++it)
-                out.ranges.push_back(parseRange(it.value().get<std::string>(), hiROM));
+                out.layer12.push_back(parseRange(it.value().get<std::string>(), hiROM));
+        }
+
+        if (j.contains("layer3"))
+        {
+            r = j["layer3"];
+            if (r.is_string())
+            {
+                out.layer3.push_back(parseRange(r.get<std::string>(), hiROM));
+            }
+            else if (r.is_array())
+            {
+                for (auto& e : r)
+                    out.layer3.push_back(parseRange(e.get<std::string>(), hiROM));
+            }
+            else if (r.is_object())
+            {
+                for (auto it = r.begin(); it != r.end(); ++it)
+                    out.layer3.push_back(parseRange(it.value().get<std::string>(), hiROM));
+            }
         }
     }
     else
     {
         if (j.is_string())
         {
-            out.ranges.push_back(parseRange(j.get<std::string>(), hiROM));
+            out.layer12.push_back(parseRange(j.get<std::string>(), hiROM));
         }
         else if (j.is_array())
         {
             for (auto& e : j)
-                out.ranges.push_back(parseRange(e.get<std::string>(), hiROM));
+                out.layer12.push_back(parseRange(e.get<std::string>(), hiROM));
         }
         else if (j.is_object())
         {
             for (auto it = j.begin(); it != j.end(); ++it)
-                out.ranges.push_back(parseRange(it.value().get<std::string>(), hiROM));
+                out.layer12.push_back(parseRange(it.value().get<std::string>(), hiROM));
         }
     }
     if (j.contains("common"))
@@ -105,10 +123,20 @@ static LevelEntry parseLevel(const json& j, const bool hiROM)
 {
     LevelEntry L{};
 
+    // level data
     L.chip32x32         = getAddr(j, "chip32x32", hiROM);
     L.chip32x32_palette = getAddr(j, "chip32x32_palette", hiROM);
     L.map               = getAddr(j, "map", hiROM);
     L.scroll            = getAddr(j, "scroll", hiROM);
+
+    L.collision = 0;
+    if (j.contains("collision"))
+        L.collision = getAddr(j, "collision", hiROM);
+
+    // bg data
+    L.bg_tilemap = 0;
+    if (j.contains("bg_tilemap"))
+        L.bg_tilemap = getAddr(j, "bg_tilemap", hiROM);
 
     // enemy
     L.enemy_screen = getAddr(j["enemy"], "screen", hiROM);
@@ -148,6 +176,17 @@ static LevelEntry parseLevel(const json& j, const bool hiROM)
     L.palette_data = parseAddr(P["data"], hiROM);
 
     L.palette_anime = parseAddr(P["anime_palette"], hiROM);
+
+    std::string value = P.value("layer2", "");
+
+    L.palette_layer2 = 0;
+    L.palette_layer3 = 0;
+    if(!value.empty())
+        L.palette_layer2 = parseAddr(value, hiROM);
+
+    value = P.value("layer3", "");
+    if (!value.empty())
+        L.palette_layer3 = parseAddr(value , hiROM);
 
     return L;
 }

@@ -13,7 +13,8 @@ struct Range {
 };
 
 struct GFXData {
-    std::vector<Range> ranges;
+    std::vector<Range> layer12;
+    std::vector<Range> layer3;
     std::vector<int> commonIdx;
 };
 
@@ -26,9 +27,13 @@ struct LevelEntry {
 
     // level data
     uint32_t map;
+    uint32_t collision;
 
     // level scroll data
     uint32_t scroll;
+
+    //bg data
+    uint32_t bg_tilemap;
 
     // enemy
     uint32_t enemy_screen;
@@ -65,6 +70,10 @@ struct LevelEntry {
     uint32_t palette_afc;
     uint32_t palette_aft;
     uint32_t palette_anime;
+
+    // layer 2 & 3 palette
+    uint32_t palette_layer2;
+    uint32_t palette_layer3;
 };
 
 struct MM2_Data {
@@ -82,12 +91,17 @@ enum LevelField {
     LF_MetaTileData,
     LF_MetaTilePaletteData,
     LF_LevelData,
+    LF_CollisionData,
     LF_ScrollData,
+    LF_Layer2Data,
+    LF_Layer3Data,
     LF_EnemyData,
     LF_ItemData,
     LF_MidPointData,
     LF_PatternTable,
     LF_PaletteData,
+    LF_Layer2PaletteData,
+    LF_Layer3PaletteData,
     LF_PaletteAnimationData,
     LF_END
 };

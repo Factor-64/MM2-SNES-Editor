@@ -52,7 +52,7 @@ void uploadTilemapTextureRGBA(const std::vector<ColorRGBA>& pixels, TilemapTextu
 std::vector<MacroTile> buildMacroTiles(const TileMap& map);
 
 std::vector<MetaTile> makeMetaTiles(const std::vector<MetaTileData>& data, const std::vector<MacroTile>& macroTiles);
-void saveMetaTilesToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, const std::vector<MetaTile>& levelMetaTiles);
+void saveMetaTilesToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, uint32_t collision, const std::vector<MetaTile>& levelMetaTiles);
 
 void renderMetaTileMapToRGBA(const std::vector<MetaTile>& metaTiles, int metaWidth, const std::vector<Tile>& atlas, 
     const Palettes& palettes, const uint8_t palOffset, const ColorRGBA& bgColor, std::vector<ColorRGBA>& outPixels, int& width, int& height);
@@ -66,6 +66,16 @@ void renderMetaTileWindowToRGBA(
     const std::vector<Tile>& atlas,
     const Palettes& palettes,
     const uint8_t palOffset,
+    const ColorRGBA& bgColor,
+    std::vector<ColorRGBA>& outPixels,
+    int& outW,
+    int& outH);
+
+void renderBGTileMapToRGBA(
+    const std::vector<BGTileData>& bgTileData,
+    int screenWidth, // in tiles
+    const std::vector<Tile>& atlas,
+    const Palettes& palettes,
     const ColorRGBA& bgColor,
     std::vector<ColorRGBA>& outPixels,
     int& outW,

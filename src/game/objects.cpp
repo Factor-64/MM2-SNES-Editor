@@ -2,7 +2,7 @@
 
 Objects loadObjectData(const std::vector<uint8_t>& rom, uint32_t screenAddr, uint32_t xAddr, uint32_t yAddr, uint32_t typeAddr, int count)
 {
-	std::vector<Object> out;
+	Objects out;
 	out.resize(count);
 	for (int i = 0; i < count; ++i)
 	{
@@ -17,11 +17,11 @@ Objects loadObjectData(const std::vector<uint8_t>& rom, uint32_t screenAddr, uin
 	return out;
 }
 
-void saveObjectData(std::vector<uint8_t>& rom, uint32_t screenAddr,	uint32_t xAddr, uint32_t yAddr,	uint32_t typeAddr, const Objects& objects) 
+void saveObjectData(std::vector<uint8_t>& rom, uint32_t screenAddr,	uint32_t xAddr, uint32_t yAddr,	uint32_t typeAddr, const Objects& objs) 
 {
-	for (size_t i = 0; i < objects.size(); ++i) 
+	for (size_t i = 0; i < objs.size(); ++i) 
 	{
-		const auto& o = objects[i];
+		const auto& o = objs[i];
 		rom[screenAddr + i] = o.screen;
 		rom[xAddr + i] = o.x;
 		rom[yAddr + i] = o.y;
