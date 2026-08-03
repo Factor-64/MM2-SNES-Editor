@@ -84,4 +84,5 @@ CMakeLists.txt.user*
 /.qtcreator/
 /out*/
 **/.vs/
+**/enc_temp_folder/
 
