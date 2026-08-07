@@ -135,8 +135,22 @@ static LevelEntry parseLevel(const json& j, const bool hiROM)
 
     // bg data
     L.bg_tilemap = 0;
-    if (j.contains("bg_tilemap"))
-        L.bg_tilemap = getAddr(j, "bg_tilemap", hiROM);
+    L.bg_boss = 0;
+    L.bg_checkpoint = 0;
+    L.bg_mirror = 0;
+    L.bg_scroll = 0;
+    L.bg_speed = 0;
+    L.bg_start = 0;
+    if (j.contains("background"))
+    {
+        auto& B = j["background"];
+        L.bg_tilemap    = parseAddr(B["tilemap"], hiROM);
+        L.bg_scroll     = parseAddr(B["scroll_flags"], hiROM);
+        L.bg_start      = parseAddr(B["start"], hiROM);
+        L.bg_checkpoint = parseAddr(B["checkpoint"], hiROM);
+        L.bg_mirror     = parseAddr(B["mirror"], hiROM);
+        L.bg_speed      = parseAddr(B["speed"], hiROM);
+    }
 
     // enemy
     L.enemy_screen = getAddr(j["enemy"], "screen", hiROM);

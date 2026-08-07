@@ -72,7 +72,15 @@
 				"map": "20:8500",
 				"collision": "20:9000",
 				"scroll": "20:B400",
-				"bg_tilemap": "38:0000",
+				"background": {
+					"tilemap": "38:0000",
+					"scroll_flags": "20:BB80",
+					"start": "20:BB50",
+					"checkpoint": "20:BB60",
+					"boss": "20:BB70",
+					"mirror": "20:AF00",
+					"speed": "20:AF80"
+				},
 				"enemy": {
 					"screen": "20:B600",
 					"x": "20:B700",
@@ -115,7 +123,15 @@
 				"map": "21:8500",
 				"collision": "21:9000",
 				"scroll": "21:B400",
-				"bg_tilemap": "38:2000",
+				"background": {
+					"tilemap": "38:2000",
+					"scroll_flags": "21:BB80",
+					"start": "21:BB50",
+					"checkpoint": "21:BB60",
+					"boss": "21:BB70",
+					"mirror": "21:AF00",
+					"speed": "21:AF80"
+				},
 				"enemy": {
 					"screen": "21:B600",
 					"x": "21:B700",
@@ -158,7 +174,15 @@
 				"map": "22:8500",
 				"collision": "22:9000",
 				"scroll": "22:B400",
-				"bg_tilemap": "38:4000",
+				"background": {
+					"tilemap": "38:4000",
+					"scroll_flags": "22:BB80",
+					"start": "22:BB50",
+					"checkpoint": "22:BB60",
+					"boss": "22:BB70",
+					"mirror": "22:AF00",
+					"speed": "22:AF80"
+				},
 				"enemy": {
 					"screen": "22:B600",
 					"x": "22:B700",
@@ -201,7 +225,15 @@
 				"map": "23:8500",
 				"collision": "23:9000",
 				"scroll": "23:B400",
-				"bg_tilemap": "38:6000",
+				"background": {
+					"tilemap": "38:6000",
+					"scroll_flags": "23:BB80",
+					"start": "23:BB50",
+					"checkpoint": "23:BB60",
+					"boss": "23:BB70",
+					"mirror": "23:AF00",
+					"speed": "23:AF80"
+				},
 				"enemy": {
 					"screen": "23:B600",
 					"x": "23:B700",
@@ -244,7 +276,15 @@
 				"map": "24:8500",
 				"collision": "24:9000",
 				"scroll": "24:B400",
-				"bg_tilemap": "2F:0000",
+				"background": {
+					"tilemap": "2F:0000",
+					"scroll_flags": "24:BB80",
+					"start": "24:BB50",
+					"checkpoint": "24:BB60",
+					"boss": "24:BB70",
+					"mirror": "24:AF00",
+					"speed": "24:AF80"
+				},
 				"enemy": {
 					"screen": "24:B600",
 					"x": "24:B700",
@@ -287,7 +327,15 @@
 				"map": "25:8500",
 				"collision": "25:9000",
 				"scroll": "25:B400",
-				"bg_tilemap": "2F:2000",
+				"background": {
+					"tilemap": "2F:2000",
+					"scroll_flags": "25:BB80",
+					"start": "25:BB50",
+					"checkpoint": "25:BB60",
+					"boss": "25:BB70",
+					"mirror": "25:AF00",
+					"speed": "25:AF80"
+				},
 				"enemy": {
 					"screen": "25:B600",
 					"x": "25:B700",
@@ -330,7 +378,15 @@
 				"map": "26:8500",
 				"collision": "26:9000",
 				"scroll": "26:B400",
-				"bg_tilemap": "2F:4000",
+				"background": {
+					"tilemap": "2F:4000",
+					"scroll_flags": "26:BB80",
+					"start": "26:BB50",
+					"checkpoint": "26:BB60",
+					"boss": "26:BB70",
+					"mirror": "26:AF00",
+					"speed": "26:AF80"
+				},
 				"enemy": {
 					"screen": "26:B600",
 					"x": "26:B700",
@@ -373,7 +429,15 @@
 				"map": "27:8500",
 				"collision": "27:9000",
 				"scroll": "27:B400",
-				"bg_tilemap": "2F:6000",
+				"background": {
+					"tilemap": "2F:6000",
+					"scroll_flags": "27:BB80",
+					"start": "27:BB50",
+					"checkpoint": "27:BB60",
+					"boss": "27:BB70",
+					"mirror": "27:AF00",
+					"speed": "27:AF80"
+				},
 				"enemy": {
 					"screen": "27:B600",
 					"x": "27:B700",
@@ -416,6 +480,15 @@
 				"map": "20:8500",
 				"collision": "20:9000",
 				"scroll": "20:B400",
+				"background": {
+					"tilemap": "3A:0000",
+					"scroll_flags": "28:BB80",
+					"start": "28:BB50",
+					"checkpoint": "28:BB60",
+					"boss": "28:BB70",
+					"mirror": "28:AF00",
+					"speed": "28:AF80"
+				},
 				"enemy": {
 					"screen": "20:B600",
 					"x": "20:B700",
@@ -458,6 +531,15 @@
 				"map": "21:8500",
 				"collision": "21:9000",
 				"scroll": "21:B400",
+				"background": {
+					"tilemap": "3A:2000",
+					"scroll_flags": "29:BB80",
+					"start": "29:BB50",
+					"checkpoint": "29:BB60",
+					"boss": "29:BB70",
+					"mirror": "29:AF00",
+					"speed": "29:AF80"
+				},
 				"enemy": {
 					"screen": "21:B600",
 					"x": "21:B700",
@@ -500,6 +582,15 @@
 				"map": "22:8500",
 				"collision": "22:9000",
 				"scroll": "22:B400",
+				"background": {
+					"tilemap": "3A:4000",
+					"scroll_flags": "2A:BB80",
+					"start": "2A:BB50",
+					"checkpoint": "2A:BB60",
+					"boss": "2A:BB70",
+					"mirror": "2A:AF00",
+					"speed": "2A:AF80"
+				},
 				"enemy": {
 					"screen": "22:B600",
 					"x": "22:B700",
@@ -542,6 +633,15 @@
 				"map": "23:8500",
 				"collision": "23:9000",
 				"scroll": "23:B400",
+				"background": {
+					"tilemap": "3A:6000",
+					"scroll_flags": "2B:BB80",
+					"start": "2B:BB50",
+					"checkpoint": "2B:BB60",
+					"boss": "2B:BB70",
+					"mirror": "2B:AF00",
+					"speed": "2B:AF80"
+				},
 				"enemy": {
 					"screen": "23:B600",
 					"x": "23:B700",
@@ -584,6 +684,15 @@
 				"map": "24:8500",
 				"collision": "24:9000",
 				"scroll": "24:B400",
+				"background": {
+					"tilemap": "3B:1000",
+					"scroll_flags": "2C:BB80",
+					"start": "2C:BB50",
+					"checkpoint": "2C:BB60",
+					"boss": "2C:BB70",
+					"mirror": "2C:AF00",
+					"speed": "2C:AF80"
+				},
 				"enemy": {
 					"screen": "24:B600",
 					"x": "24:B700",
@@ -626,6 +735,15 @@
 				"map": "25:8500",
 				"collision": "25:9000",
 				"scroll": "25:B400",
+				"background": {
+					"tilemap": "3B:2000",
+					"scroll_flags": "2D:BB80",
+					"start": "2D:BB50",
+					"checkpoint": "2D:BB60",
+					"boss": "2D:BB70",
+					"mirror": "2D:AF00",
+					"speed": "2D:AF80"
+				},
 				"enemy": {
 					"screen": "25:B600",
 					"x": "25:B700",

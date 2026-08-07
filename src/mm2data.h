@@ -34,6 +34,12 @@ struct LevelEntry {
 
     //bg data
     uint32_t bg_tilemap;
+    uint32_t bg_scroll;
+    uint32_t bg_start;
+    uint32_t bg_checkpoint;
+    uint32_t bg_boss;
+    uint32_t bg_mirror;
+    uint32_t bg_speed;
 
     // enemy
     uint32_t enemy_screen;
@@ -93,8 +99,11 @@ enum LevelField {
     LF_LevelData,
     LF_CollisionData,
     LF_ScrollData,
-    LF_Layer2Data,
-    LF_Layer3Data,
+    LF_Layer2TilemapData,
+    LF_Layer3TilemapData,
+    LF_BGScrollSpeedData,
+    LF_BGTilemapMirroring,
+    LF_BGScrollEnable,
     LF_EnemyData,
     LF_ItemData,
     LF_MidPointData,

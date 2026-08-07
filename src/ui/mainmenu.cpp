@@ -39,11 +39,8 @@ void drawMenu(MenuState& state, const bool romLoaded, const bool ready, const bo
         {
             if (ImGui::BeginMenu("Export Level Data", finished))
             {
-                if (ImGui::MenuItem("Export Layer 1 Graphics Data"))
+                if (ImGui::MenuItem("Export Layer 1+2+3 Graphics Data"))
                     state = MS_ExportGraphics;
-
-                if (ImGui::MenuItem("Export Layer 2 & 3 Graphics Data", nullptr, false, !isNES))
-                    state = MS_ExportBGGFX;
 
                 if (ImGui::MenuItem("Export MetaTile Data"))
                     state = MS_ExportMetaTiles;
@@ -60,12 +57,6 @@ void drawMenu(MenuState& state, const bool romLoaded, const bool ready, const bo
                 if (ImGui::MenuItem("Export Scroll Data"))
                     state = MS_ExportScroll;
 
-                if (ImGui::MenuItem("Export Layer 2 Data", nullptr, false, !isNES))
-                    state = MS_ExportLayer2Data;
-
-                if (ImGui::MenuItem("Export Layer 3 Data", nullptr, false, !isNES))
-                    state = MS_ExportLayer3Data;
-
                 if (ImGui::MenuItem("Export Enemy Data"))
                     state = MS_ExportEnemy;
 
@@ -81,12 +72,6 @@ void drawMenu(MenuState& state, const bool romLoaded, const bool ready, const bo
                 if (ImGui::MenuItem("Export Palette Data"))
                     state = MS_ExportPalette;
 
-                if (ImGui::MenuItem("Export Layer 2 Palette Data", nullptr, false, !isNES))
-                    state = MS_ExportLayer2Palette;
-
-                if (ImGui::MenuItem("Export Layer 3 Palette Data", nullptr, false, !isNES))
-                    state = MS_ExportLayer3Palette;
-
                 if (ImGui::MenuItem("Export Palette Animation Data"))
                     state = MS_ExportPaletteAnimation;
 
@@ -97,6 +82,33 @@ void drawMenu(MenuState& state, const bool romLoaded, const bool ready, const bo
 
                 ImGui::EndMenu();
             }
+
+            if (ImGui::BeginMenu("Export Background Data", finished && !isNES))
+            {
+                if (ImGui::MenuItem("Export Layer 2 Tilemap Data"))
+                    state = MS_ExportLayer2TilemapData;
+
+                if (ImGui::MenuItem("Export Layer 3 Tilemap Data"))
+                    state = MS_ExportLayer3TilemapData;
+
+                if (ImGui::MenuItem("Export Layer 2 Palette Data"))
+                    state = MS_ExportLayer2Palette;
+
+                if (ImGui::MenuItem("Export Layer 3 Palette Data"))
+                    state = MS_ExportLayer3Palette;
+
+                if (ImGui::MenuItem("Export Scroll Enable Data"))
+                    state = MS_ExportBGScrollEnable;
+
+                if (ImGui::MenuItem("Export Scroll Speed Data"))
+                    state = MS_ExportBGScrollSpeedData;
+
+                if (ImGui::MenuItem("Export Timemap Mirroring Data"))
+                    state = MS_ExportBGTilemapMirroring;
+
+                ImGui::EndMenu();
+            }
+
             if (ImGui::BeginMenu("Import/Export Data", finished))
             {
                 if (ImGui::MenuItem("Import Data"))

@@ -12,8 +12,11 @@ enum MenuState {
     MS_ExportLayout,
     MS_ExportCollision,
     MS_ExportScroll,
-    MS_ExportLayer2Data,
-    MS_ExportLayer3Data,
+    MS_ExportLayer2TilemapData,
+    MS_ExportLayer3TilemapData,
+    MS_ExportBGScrollSpeedData,
+    MS_ExportBGTilemapMirroring,
+    MS_ExportBGScrollEnable,
     MS_ExportEnemy,
     MS_ExportItem,
     MS_ExportMidpoint,
@@ -23,11 +26,10 @@ enum MenuState {
     MS_ExportLayer3Palette,
     MS_ExportPaletteAnimation,
     MS_ExportCommonGFX,
-    MS_ExportBGGFX,
     MS_ImportData,
     MS_ExportAllData,
     MS_OpenExportROM,
-    MS_OpenHeaderWindow
+    MS_OpenHeaderWindow,
 };
 
 void drawMenu(MenuState& state, const bool romLoaded, const bool jsonLoaded, const bool isNES);

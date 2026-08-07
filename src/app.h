@@ -8,6 +8,7 @@
 #include "snes/tiledecoder.h"
 #include "snes/tilemap.h"
 #include "game/objects.h"
+#include "game/level.h"
 
 class App {
 public:
@@ -89,9 +90,18 @@ private:
         bool hFlip = false;
         bool vFlip = false;
         bool hPriority = false;
+        bool previewScroll = false;
+        bool scrollLayer2Vertical = true;
+        bool scrollLayer3Vertical = true;
+        bool rebuildBackgrounds = false;
+        int currentScreen = 0;
+        int currentScreenId = 0;
 
         int tilesetZoom = 1;
         int editorZoom = 1;
+
+        uint32_t layer2Scanlines = 0;
+        uint32_t layer3Scanlines = 0;
         ActiveWindow activeWindow = AW_None;
 
         std::vector<uint8_t> rom;
@@ -118,6 +128,10 @@ private:
         std::vector<BGTileData> layer2TileData;
         std::vector<BGTileData> layer3TileData;
         std::vector<uint8_t> scrollData;
+        std::array<ScrollEnable, 64> bgScrollData;
+        std::array<BGPositionData, 3> bgPositionData;
+        std::array<BGTilemapMirror, 64> bgTilemapMirror;
+        std::array<std::array<BGSpeedData, 4>, 32> bgScrollSpeeds;
         Objects itemData;
         Objects enemyData;
 
@@ -136,7 +150,7 @@ private:
         int editingColor = -1;
         int selectedObject = -1;
         int objectType = -1;
-        int animatedFrame = 0;
+        //int editor.currentScreen = 0;
 
         PaletteClipboard palClip;
         ColorClipboard colClip;
@@ -162,7 +176,8 @@ private:
     void drawPaletteWindow();
     void drawLevelWindow();
     void drawHeaderWindow();
-    bool drawScrollData(std::vector<uint8_t>& data, int screenNum);
+    bool drawScrollData(std::vector<uint8_t>& data, int screenNum, bool updateScreenId);
+    void drawBGScrollData();
     void saveROMData();
     void drawLevelView();
     void drawTileView();
@@ -186,6 +201,7 @@ private:
     void saveBinary(const LevelField field, const int lvl, const int mode);
     void drawEditMode();
     void PaintTileBackground(std::vector<BGTileData>& data, int tileX, int tileY, int atlasWidth, const bool color, const bool subPal);
+    void updateScollPreview();
 
     std::vector<uint8_t> exportData;
     int currentExportIndex = -1;
