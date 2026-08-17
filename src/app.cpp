@@ -779,8 +779,12 @@ inline ImVec4 ColorU32ToVec4(ImU32 c)
 
 void App::drawTilesetWindow()
 {
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(320, 240),
+        ImVec2(FLT_MAX, FLT_MAX)
+    );
     ImGui::Begin("Tileset", &open, ImGuiWindowFlags_HorizontalScrollbar);
-    ImGui::Text("CONTROLS:");
+    ImGui::SeparatorText("CONTROLS");
     ImGui::Text("CTRL+= and CTRL+- Zooms in and out");
     if (editor.tileViewMode == VM_Tileset)
         ImGui::Text("Left Click to Select a Tile");
@@ -789,7 +793,7 @@ void App::drawTilesetWindow()
     else
         ImGui::Text("Left Click to Select a Collision Type");
     ImGui::Separator();
-
+    
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow))
     {
         editor.activeWindow = AW_Tileset;
@@ -840,8 +844,6 @@ void App::drawTilesetWindow()
     const auto& gfx = editor.data[editor.mode].gfx;
     auto levelGfx = gfx.at(levelName);
 
-    ImGui::Text("Tileset for %s", levelName.c_str());
-
     int common = 0;
 
     if (gfx.find("common") != gfx.end())
@@ -855,11 +857,6 @@ void App::drawTilesetWindow()
                 commonGfx.layer12.begin(),
                 commonGfx.layer12.end()
             );
-            /*for (const auto& g : commonGfx.layer12)
-            {
-                ImGui::Text("Common GFX Range: %06X - %06X", g.start, g.end);
-                ++common;
-            }*/
         }
         else
         {
@@ -870,9 +867,6 @@ void App::drawTilesetWindow()
                     throw std::runtime_error("commonIdx index out of range");
 
                 levelGfx.layer12.insert(levelGfx.layer12.begin(), commonGfx.layer12[i]);
-
-                //ImGui::Text("Common GFX Range: %06X - %06X", commonGfx.ranges[i].start, commonGfx.ranges[i].end);
-                //++common;
             }
         }
     }
@@ -889,6 +883,8 @@ void App::drawTilesetWindow()
         editor.levelTiles = decodeTileRanges(levelGfx.layer12, editor.rom, 32);
         
         editor.levelTileMap = makeTileMap(editor.levelTiles, 16, 1);
+
+        editor.checkpointData = loadCheckpoints(editor.rom, level.midpoint_start_y);
 
         std::vector<MetaTileData> levelMetaTileData;
 
@@ -961,18 +957,13 @@ void App::drawTilesetWindow()
 
         editor.enemyData = loadObjectData(editor.rom, level.enemy_screen, level.enemy_x, level.enemy_y, level.enemy_type, 0x100);
         editor.itemData = loadObjectData(editor.rom, level.item_screen, level.item_x, level.item_y, level.item_type, 0x40);
+
+        size_t si = editor.levelData.size();
+        editor.screenCount = si / 64;
     }
-
-    /*for (size_t i = common; i < levelGfx.ranges.size(); ++i)
-        ImGui::Text("GFX Range: %06X - %06X", levelGfx.ranges[i].start, levelGfx.ranges[i].end);
-
-    ImGui::Text("chip32x32: %06X", level.chip32x32);
-    ImGui::Text("palette:   %06X", level.chip32x32_palette);
-    ImGui::Text("pattern:   %06X", level.pattern);*/
-
-    static bool force = false;
-    const char* tabNames[] = { "Tileset", "Meta Tiles", "Collision", "Background Layer 2", "Background Layer 3"};
-    if (ImGui::BeginCombo("Tile Mode", tabNames[editor.tileViewMode]))
+    static std::string label = "Tileset for " + levelName;
+    const char* tabNames[] = { "Tile Editor", "Level Editor", "Collision Editor", "Background Layer 2 Editor", "Background Layer 3 Editor"};
+    if (ImGui::BeginCombo("Editor Mode", tabNames[editor.tileViewMode]))
     {
         int tabsize = editor.mode == 0 ? 3 : 5;
         for (int i = 0; i < tabsize; ++i)
@@ -985,22 +976,22 @@ void App::drawTilesetWindow()
                 switch (editor.tileViewMode)
                 {
                     case VM_Tileset:
-                        if (editor.paletteIndex < 2 || editor.paletteIndex > 5)
-                            editor.paletteIndex = 2;
+                        label = "Tileset for " + levelName;
                         editor.editMode = EM_Metatiles;
                         break;
                     case VM_Metatiles:
+                        label = "Meta Tiles for " + levelName;
                         editor.editMode = EM_Level;
                         break;
                     case VM_Collision:
                         editor.editMode = EM_Collision;
                         break;
                     case VM_Layer2:
+                        label = "Tileset for " + levelName;
                         editor.editMode = EM_Layer2;
                         break;
                     case VM_Layer3:
-                        if (editor.paletteIndex > 1)
-                            editor.paletteIndex = 0;
+                        label = "Tileset for " + levelName;
                         editor.editMode = EM_Layer3;
                         break;
                     default:
@@ -1019,6 +1010,7 @@ void App::drawTilesetWindow()
     
     if (editor.tileViewMode != VM_Collision)
     {
+        ImGui::SeparatorText(label.c_str());
         ImGui::Text("Selected Tile: %d", editor.selectedTile);
         drawTileView();
     }
@@ -1544,7 +1536,7 @@ void App::writeSNESPaletteToROM(size_t paletteIndex, const Palette& pal, const L
             break;
         }
         case PT_Layer3: {
-            uint32_t base = level.palette_layer2;
+            uint32_t base = level.palette_layer3;
 
             for (int i = 0; i < 16; ++i)
             {
@@ -1553,8 +1545,8 @@ void App::writeSNESPaletteToROM(size_t paletteIndex, const Palette& pal, const L
             }
 
             Palettes p = decodeCGRAMPalettes(editor.rom, base, 2);
-            editor.palettes[6] = p[0];
-            editor.palettes[7] = p[1];
+            editor.palettes[0] = p[0];
+            editor.palettes[1] = p[1];
             for (int p = 0; p < 2; ++p)
             {
                 for (int chunk = 0; chunk < 8; ++chunk)
@@ -1600,20 +1592,20 @@ void App::writeSNESPaletteToROM(size_t paletteIndex, const Palette& pal, const L
 
 void App::drawPaletteWindow()
 {
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(320, 240),
+        ImVec2(FLT_MAX, FLT_MAX)
+    );
     ImGui::Begin("Palettes", &open, ImGuiWindowFlags_HorizontalScrollbar);
     
-    ImGui::Text("CONTROLS:");
+    ImGui::SeparatorText("CONTROLS");
     ImGui::Text("Left Click a color to change it");
     ImGui::Text("Left Click a palette name to copy, paste, or swap with clipboard");
+    ImGui::Text("Up/Down Arrow increase/decrease BG Palette Index");
 
     auto& names = editor.data[editor.mode].levelNames;
     const std::string& levelName = names[editor.selectedLevel];
     const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
-
-    std::string label = "Palettes for ";
-    label += levelName;
-
-    ImGui::SeparatorText(label.c_str());
 
     bool isNES = (editor.mode == 0);
 
@@ -1629,10 +1621,30 @@ void App::drawPaletteWindow()
         case VM_Layer3:
             offset = 0;
             colorCount = 2;
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  editor.subPaletteIndex--;
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) editor.subPaletteIndex++;
+            if (editor.subPaletteIndex > 3)
+                editor.subPaletteIndex = 3;
+            else if (editor.subPaletteIndex < 0)
+                editor.subPaletteIndex = 0;
+            ImGui::Text("Left/Right Arrow decrease/increase Sub-Palette Index");
             break;
         default:
             break;
     }
+
+    std::string label = "Palettes for ";
+    label += levelName;
+
+    ImGui::SeparatorText(label.c_str());
+
+    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))  editor.paletteIndex--;
+    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) editor.paletteIndex++;
+
+    if (editor.paletteIndex < offset)
+        editor.paletteIndex = offset;
+    else if (editor.paletteIndex > colorCount - 1)
+        editor.paletteIndex = colorCount - 1;
 
     if (ImGui::BeginCombo("BG Palette Index", std::to_string(editor.paletteIndex).c_str()))
     {
@@ -1694,8 +1706,10 @@ void App::drawPaletteWindow()
     ImGui::End();
 }
 
-inline void DrawTextOutlined(ImDrawList* dl, ImVec2 pos, ImU32 colText, const char* text)
+inline void DrawTextOutlined(ImDrawList* dl, ImVec2 pos, ImU32 colText, const char* text, float zoom)
 {
+    ImGui::SetWindowFontScale(zoom);
+
     ImU32 colOutline = IM_COL32(255, 255, 255, 255);
 
     dl->AddText(ImVec2(pos.x - 1, pos.y), colOutline, text);
@@ -1704,11 +1718,16 @@ inline void DrawTextOutlined(ImDrawList* dl, ImVec2 pos, ImU32 colText, const ch
     dl->AddText(ImVec2(pos.x, pos.y + 1), colOutline, text);
 
     dl->AddText(pos, colText, text);
+    ImGui::SetWindowFontScale(1);
 }
 
 void App::drawLevelWindow()
 {
-    ImGui::Begin("Editor View", &open, ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(320, 240),
+        ImVec2(FLT_MAX, FLT_MAX)
+    );
+    ImGui::Begin("Editor", &open, ImGuiWindowFlags_HorizontalScrollbar);
 
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow))
     {
@@ -1717,7 +1736,7 @@ void App::drawLevelWindow()
 
     if (editor.editMode != EM_Level)
     {
-        ImGui::Text("CONTROLS:");
+        ImGui::SeparatorText("CONTROLS");
         ImGui::Text("CTRL+= and CTRL+- Zooms in and out");
         ImGui::Text("B to toggle Paint Mode");
         if (editor.editMode == EM_Collision)
@@ -1729,12 +1748,14 @@ void App::drawLevelWindow()
             ImGui::Text("Hold Left Click to Paint with the Selected Tile");
             ImGui::Text("The selected Tile will use the currently Select Palette & Attributes");
             ImGui::Text("Right Click to grab the currently hovered Tile");
-            ImGui::Text("Paint Mode makes Left Click only Paint with the currently Selected Palette & Attribute");
+            ImGui::Text("Paint Mode makes Left Click only Paint with the currently Selected Palette & Attributes");
             ImGui::Checkbox("Paint Mode", &editor.paintMode);
             if (editor.editMode == EM_Layer2 || editor.editMode == EM_Layer3)
             {
                 ImGui::Checkbox("Horizontal Flip", &editor.hFlip);
+                ImGui::SameLine();
                 ImGui::Checkbox("Vertical Flip", &editor.vFlip);
+                ImGui::SameLine();
                 ImGui::Checkbox("High Priority", &editor.hPriority);
             }
         }
@@ -1751,6 +1772,10 @@ void App::drawLevelWindow()
 
 void App::drawHeaderWindow()
 {
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(320, 240),
+        ImVec2(FLT_MAX, FLT_MAX)
+    );
     ImGui::Begin("SNES Header Info", &openHeader);
 
     ImGui::Text("Title: %s", editor.header.title);
@@ -1802,8 +1827,8 @@ inline bool GetTileUnderMouse(const ImVec2& min, int s, int& outX, int& outY)
     ImVec2 mouse = ImGui::GetMousePos();
     ImVec2 rel(mouse.x - min.x, mouse.y - min.y);
 
-    outX = (int)(rel.x / s);
-    outY = (int)(rel.y / s);
+    outX = static_cast<int>(rel.x / s);
+    outY = static_cast<int>(rel.y / s);
 
     return true;
 }
@@ -1856,10 +1881,10 @@ inline void DrawTilePreview(
     float x1 = x0 + ts;
     float y1 = y0 + ts;
 
-    float u0 = (atlasX * s) / (float)tileset.width;
-    float v0 = (atlasY * s) / (float)tileset.height;
-    float u1 = ((atlasX + 1) * s) / (float)tileset.width;
-    float v1 = ((atlasY + 1) * s) / (float)tileset.height;
+    float u0 = (atlasX * s) / static_cast<float>(tileset.width);
+    float v0 = (atlasY * s) / static_cast<float>(tileset.height);
+    float u1 = ((atlasX + 1) * s) / static_cast<float>(tileset.width);
+    float v1 = ((atlasY + 1) * s) / static_cast<float>(tileset.height);
 
     ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
 
@@ -2008,7 +2033,7 @@ inline void App::PaintTilePixel(int tileIndex, int x, int y)
     editor.rebuildEdit = true;
 }
 
-void verticalMirroring(std::vector<ColorRGBA>& pixels, int& width, int& height, bool repeat)
+static void verticalMirroring(std::vector<ColorRGBA>& pixels, int& width, int& height, bool repeat)
 {
     int halfH = height / 2;
     int newW = width * 2;
@@ -2047,7 +2072,7 @@ void verticalMirroring(std::vector<ColorRGBA>& pixels, int& width, int& height, 
     height = halfH;
 }
 
-void horizontalMirroring(std::vector<ColorRGBA>& pixels, int& width, int& height)
+static void horizontalMirroring(std::vector<ColorRGBA>& pixels, int& width, int& height)
 {
     int halfH = height / 2;
 
@@ -2060,11 +2085,11 @@ void horizontalMirroring(std::vector<ColorRGBA>& pixels, int& width, int& height
     }
 }
 
-void DrawHorizontalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& trueWidth, int& trueHeight, uint32_t& scanlines, int& zoom)
+static void DrawHorizontalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& trueWidth, int& trueHeight, int& scanlines, int& zoom)
 {
     int hW = trueWidth / 2;
 
-    float uvOffset = fmod((float)(scanlines * zoom) / t.width, 1.0f);
+    float uvOffset = fmod(static_cast<float>(scanlines * zoom) / t.width, 1.0f);
     if (uvOffset < 0) uvOffset += 1.0f;
 
     float u0 = uvOffset;
@@ -2086,7 +2111,7 @@ void DrawHorizontalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& trueWid
         float total = w0 + w1;       // should be 0.5
         float px0 = hW * (w0 / total);
         //float px1 = hW * (w1 / total);
-        int px0i = (int)(px0 + 0.5f);
+        int px0i = static_cast<int>(px0 + 0.5f);
         int px1i = hW - px0i;
 
         DrawNearestImage(dl, t,
@@ -2105,12 +2130,12 @@ void DrawHorizontalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& trueWid
     }
 }
 
-void DrawVerticalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& trueWidth, int& trueHeight, uint32_t& scanlines, int& zoom)
+static void DrawVerticalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& trueWidth, int& trueHeight, int& scanlines, int& zoom)
 {
     
     int hH = trueHeight / 2;
 
-    float uvOffset = fmod((float)(scanlines * zoom) / t.height, 1.0f);
+    float uvOffset = fmod(static_cast<float>(scanlines * zoom) / t.height, 1.0f);
     if (uvOffset < 0) uvOffset += 1.0f;
 
     float v0 = uvOffset;
@@ -2132,7 +2157,7 @@ void DrawVerticalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& trueWidth
         float total = h0 + h1;       // should be 0.5
         float px0 = hH * (h0 / total);
         //float px1 = hH - px0;
-        int px0i = (int)(px0 + 0.5f); 
+        int px0i = static_cast<int>(px0 + 0.5f); 
         int px1i = hH - px0i;
 
         DrawNearestImage(dl, t,
@@ -2151,6 +2176,20 @@ void DrawVerticalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& trueWidth
             ImVec2(1, v1_wrapped)
         );
     }
+}
+
+inline void DrawUnSelectedBox()
+{
+    ImVec2 p0 = ImGui::GetCursorScreenPos();
+    ImVec2 p1 = ImVec2(
+        p0.x + ImGui::GetContentRegionAvail().x,
+        p0.y + ImGui::GetTextLineHeight()
+    );
+
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        p0, p1,
+        IM_COL32(32, 32, 32, 255)
+    );
 }
 
 void App::drawEditMode()
@@ -2530,21 +2569,33 @@ void App::drawTileView()
 
 void App::drawLevelView()
 {
-    ImGui::Text("CONTROLS:");
+    ImGui::SeparatorText("CONTROLS");
     ImGui::Text("Left and Right Arrow keys Scroll left and right");
     ImGui::Text("CTRL+= and CTRL+- Zooms in and out");
-    if (editor.lvlViewMode == LVM_Level)
+
+    int fullMetaWidth = editor.screenCount * 8;
+    int maxScreens = editor.screenCount;
+
+    switch (editor.lvlViewMode)
     {
-        ImGui::Text("Hold Left Click to Paint with the Selected Meta Tile");
-        ImGui::Text("Right Click to grab the currently hovered Meta Tile");
-    }
-    else
-    {
-        ImGui::Text("Left Click to Selected an Object");
-        ImGui::Text("Hold Left Click to Drag an Object");
-        ImGui::Text("Left Click an Object in the List to jump to it");
-        ImGui::Text("Right Click an Object in the List for context menu");
-        ImGui::Text("WARNING: Insert Above/Below shifts all objects up/down so the first/last Object will be overwritten");
+        case LVM_Level:
+            ImGui::Text("Hold Left Click to Paint with the Selected Meta Tile");
+            ImGui::Text("Right Click to grab the currently hovered Meta Tile");
+            maxScreens -= 2;
+            break;
+        case LVM_Objects:
+            ImGui::Text("Left Click to Selected an Object");
+            ImGui::Text("Hold Left Click to Drag an Object");
+            ImGui::Text("Left Click an Object in the List to jump to it");
+            ImGui::Text("Right Click an Object in the List for context menu");
+            ImGui::Text("WARNING: Insert Above/Below shifts all objects up/down so the first/last Object will be overwritten");
+            maxScreens -= 2;
+            break;
+        case LVM_Checkpoints:
+            maxScreens -= 1;
+            break;
+        default:
+            break;
     }
     ImGui::Separator();
 
@@ -2556,10 +2607,10 @@ void App::drawLevelView()
     ImGui::Text("Map address: %06X", level.map);
     ImGui::Text("Scroll: %06X", level.scroll);*/
 
-    const char* cbNames[] = { "Level Editor", "Object Editor" };
+    const char* cbNames[] = { "Level Editor", "Object Editor", "Checkpoint Editor" };
     if (ImGui::BeginCombo("Editor Type", cbNames[editor.lvlViewMode]))
     {
-        for (int i = 0; i < 2; ++i)
+        for (int i = 0; i < 3; ++i)
         {
             bool selected = (editor.lvlViewMode == i);
             if (ImGui::Selectable(cbNames[i], selected))
@@ -2579,30 +2630,38 @@ void App::drawLevelView()
     static TilemapTexture layer2;
     static TilemapTexture layer3;
 
-    size_t si = editor.levelData.size();
-    int numScreens = si / 64;
-    int fullMetaWidth = numScreens * 8;
-
     if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  editor.currentScreen--;
     if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) editor.currentScreen++;
 
-    int maxScroll = std::max(0, numScreens - 2);
+    int maxScroll = std::max(0, maxScreens);
     editor.currentScreen = std::clamp(editor.currentScreen, 0, maxScroll);
 
     ImGui::SliderInt("Screens", &editor.currentScreen, 0, maxScroll);
 
-    if (editor.lvlViewMode == LVM_Level)
-    {
-        if (drawScrollData(editor.scrollData, editor.currentScreen, true) && editor.currentScreen < si - 1)
-            drawScrollData(editor.scrollData, editor.currentScreen + 1, false);
-    }
+    bool screenChange = editor.currentScreen != currentScreen;
 
     int windowX = editor.currentScreen * 8;
 
-    if (tileGrid.tex == 0 || editor.currentScreen != currentScreen || editor.rebuildView)
+    if (tileGrid.tex == 0 || screenChange || editor.rebuildView)
     {
         editor.rebuildView = false;
         currentScreen = editor.currentScreen;
+
+        int index = 0;
+        int totalScreens = 0;
+
+        while (index < editor.scrollData.size())
+        {
+            uint8_t scrollByte = editor.scrollData[index];
+            totalScreens += (scrollByte & 0x0F) + 1;
+
+            if (totalScreens > editor.currentScreen)
+                break;
+
+            ++index;
+        }
+
+        editor.currentScreenId = index;
 
         std::vector<ColorRGBA> outPixels;
 
@@ -2613,7 +2672,7 @@ void App::drawLevelView()
         if (!editor.universalBGColor)
             bgColor.a = 0;
 
-        int windowWidth = 16; // 2 screens
+        int windowWidth = editor.lvlViewMode == LVM_Checkpoints ? 8 : 16;
         uint8_t offset = editor.mode == 0 ? 0 : 2;
         renderMetaTileWindowToRGBA(
             editor.levelData,
@@ -2632,69 +2691,74 @@ void App::drawLevelView()
 
         uploadTilemapTextureRGBA(outPixels, tileGrid);
     }
-    if (editor.lvlViewMode == LVM_Level && editor.mode && (layer2.tex == 0 || layer3.tex == 0 || editor.rebuildBackgrounds))
+    if (editor.lvlViewMode == LVM_Level)
     {
-        editor.rebuildBackgrounds = false;
-
-        ColorRGBA bgColor = editor.palettes[0][0];
-        if (!editor.universalBGColor)
-            bgColor.a = 0;
-
-        if (layer2.tex != 0)
-            glDeleteTextures(1, &layer2.tex);
-
-        if (layer3.tex != 0)
-            glDeleteTextures(1, &layer3.tex);
-
-        std::vector<ColorRGBA> outPixels;
-
-        renderBGTileMapToRGBA(editor.layer2TileData, 32, editor.levelTiles, editor.aniPalettes, bgColor, outPixels, layer2.width, layer2.height);
-        /*
-        28 = 32x32 single screen mirroring
-        29 = 64x32 vertical mirroring (horizontal scroll)
-        2A = 32x64 horizontal mirroring (vertical scroll)
-        30 = 32x32 single screen mirroring
-        31 = 64x32 vertical mirroring (horizontal scroll)
-        32 = 32x64 horizontal mirroring (vertical scroll)
-        */
-        if (editor.bgTilemapMirror[editor.currentScreenId].bg2_mode == 0x29)
+        if (editor.mode && (layer2.tex == 0 || layer3.tex == 0 || editor.rebuildBackgrounds))
         {
-            editor.scrollLayer2Vertical = false;
-            verticalMirroring(outPixels, layer2.width, layer2.height, false);
-        }
-        else if (editor.bgTilemapMirror[editor.currentScreenId].bg2_mode == 0x28)
-        {
-            if (editor.scrollLayer2Vertical)
-                horizontalMirroring(outPixels, layer2.width, layer2.height);
+            editor.rebuildBackgrounds = false;
+
+            ColorRGBA bgColor = editor.palettes[0][0];
+            if (!editor.universalBGColor)
+                bgColor.a = 0;
+
+            if (layer2.tex != 0)
+                glDeleteTextures(1, &layer2.tex);
+
+            if (layer3.tex != 0)
+                glDeleteTextures(1, &layer3.tex);
+
+            std::vector<ColorRGBA> outPixels;
+
+            renderBGTileMapToRGBA(editor.layer2TileData, 32, editor.levelTiles, editor.aniPalettes, bgColor, outPixels, layer2.width, layer2.height);
+            /*
+            28 = 32x32 single screen mirroring
+            29 = 64x32 vertical mirroring (horizontal scroll)
+            2A = 32x64 horizontal mirroring (vertical scroll)
+            30 = 32x32 single screen mirroring
+            31 = 64x32 vertical mirroring (horizontal scroll)
+            32 = 32x64 horizontal mirroring (vertical scroll)
+            */
+            if (editor.bgTilemapMirror[editor.currentScreenId].bg2_mode == 0x29)
+            {
+                editor.scrollLayer2Vertical = false;
+                verticalMirroring(outPixels, layer2.width, layer2.height, false);
+            }
+            else if (editor.bgTilemapMirror[editor.currentScreenId].bg2_mode == 0x28)
+            {
+                if (editor.scrollLayer2Vertical)
+                    horizontalMirroring(outPixels, layer2.width, layer2.height);
+                else
+                    verticalMirroring(outPixels, layer2.width, layer2.height, true);
+            }
             else
-                verticalMirroring(outPixels, layer2.width, layer2.height, true);
-        }
-        else
-        {
-            editor.scrollLayer2Vertical = true;
-        }
+            {
+                editor.scrollLayer2Vertical = true;
+            }
 
-        uploadTilemapTextureRGBA(outPixels, layer2);
-        outPixels.clear();
-        renderBGTileMapToRGBA(editor.layer3TileData, 32, editor.layer3Tiles, editor.subPalettes, bgColor, outPixels, layer3.width, layer3.height);
+            uploadTilemapTextureRGBA(outPixels, layer2);
+            outPixels.clear();
+            renderBGTileMapToRGBA(editor.layer3TileData, 32, editor.layer3Tiles, editor.subPalettes, bgColor, outPixels, layer3.width, layer3.height);
 
-        if (editor.bgTilemapMirror[editor.currentScreenId].bg3_mode == 0x31)
-        {
-            editor.scrollLayer3Vertical = false;
-            verticalMirroring(outPixels, layer3.width, layer3.height, false);
-        }
-        else if (editor.bgTilemapMirror[editor.currentScreenId].bg3_mode == 0x30)
-        {
-            if (editor.scrollLayer2Vertical)
-                horizontalMirroring(outPixels, layer3.width, layer3.height);
+            if (editor.bgTilemapMirror[editor.currentScreenId].bg3_mode == 0x31)
+            {
+                editor.scrollLayer3Vertical = false;
+                verticalMirroring(outPixels, layer3.width, layer3.height, false);
+            }
+            else if (editor.bgTilemapMirror[editor.currentScreenId].bg3_mode == 0x30)
+            {
+                if (editor.scrollLayer2Vertical)
+                    horizontalMirroring(outPixels, layer3.width, layer3.height);
+                else
+                    verticalMirroring(outPixels, layer3.width, layer3.height, true);
+            }
             else
-                verticalMirroring(outPixels, layer3.width, layer3.height, true);
+            {
+                editor.scrollLayer3Vertical = true;
+            }
+            uploadTilemapTextureRGBA(outPixels, layer3);
         }
-        else
-        {
-            editor.scrollLayer3Vertical = true;
-        }
-        uploadTilemapTextureRGBA(outPixels, layer3);
+
+        drawScrollData();
     }
 
     int trueWidth = tileGrid.width * editor.editorZoom;
@@ -2821,7 +2885,7 @@ void App::drawLevelView()
             }
         }
     }
-    else
+    else if(editor.lvlViewMode == LVM_Objects)
     {
         int screenA = editor.currentScreen;
         int screenB = editor.currentScreen + 1;
@@ -2832,18 +2896,25 @@ void App::drawLevelView()
             editor.objectType = -1;
         }
 
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(320, 240),
+            ImVec2(FLT_MAX, FLT_MAX)
+        );
         ImGui::Begin("Object List");
+
+        float halfWidth = ImGui::GetContentRegionAvail().x * 0.5f;
+        ImVec2 childSize(halfWidth, 0);
 
         for (int type = 0; type < 2; ++type)
         {
             if (type == 0)
             {
-                ImGui::BeginChild("EnemyList", ImVec2(250, 300), true);
+                ImGui::BeginChild("EnemyList", childSize, true);
                 ImGui::SeparatorText("Enemies");
             }
             else
             {
-                ImGui::BeginChild("ItemList", ImVec2(250, 300), true);
+                ImGui::BeginChild("ItemList", childSize, true);
                 ImGui::SeparatorText("Items");
             }
             Objects* objs = (type == 0 ? &editor.enemyData : &editor.itemData);
@@ -2854,7 +2925,13 @@ void App::drawLevelView()
                 Object& obj = (*objs)[i];
                 bool onScreen = (obj.screen == screenA || obj.screen == screenB);
                 bool valid = (obj.type != 0xFF);
-                bool selected = editor.selectedObject == i;
+                bool selected = editor.selectedObject == i && type == editor.objectType;
+
+                if (!selected)
+                {
+                    DrawUnSelectedBox();
+                }
+
                 if (ImGui::Selectable(std::format("{} {}",
                     (type == 0 ? "Enemy" : "Item"), i).c_str(), selected))
                 {
@@ -2927,15 +3004,19 @@ void App::drawLevelView()
                     continue;
                 }
 
-                float px = min.x + (obj.screen - screenA) * 256 + obj.x;
-                float py = min.y + obj.y;
+                float px = min.x + ((obj.screen - screenA) * 256 + obj.x) * editor.editorZoom;
+                float py = min.y + (obj.y * editor.editorZoom);
+
+                const int baseSize = 8;
+                const int size = baseSize * editor.editorZoom;
 
                 ImVec2 p0(px, py);
-                ImVec2 p1(px + 8, py + 8);
+                ImVec2 p1(px + size, py + size);
 
                 ImVec2 mouse = ImGui::GetMousePos();
-                bool hovered = (mouse.x >= p0.x && mouse.x <= p1.x &&
-                    mouse.y >= p0.y && mouse.y <= p1.y);
+                bool hovered =
+                    mouse.x >= p0.x && mouse.x <= p1.x &&
+                    mouse.y >= p0.y && mouse.y <= p1.y;
 
                 if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                 {
@@ -2950,11 +3031,11 @@ void App::drawLevelView()
                     editor.selectedObject == index &&
                     ImGui::IsMouseDown(ImGuiMouseButton_Left))
                 {
-                    float newX = mouse.x - editor.dragOffset.x - min.x - (obj.screen - screenA) * 256;
-                    float newY = mouse.y - editor.dragOffset.y - min.y;
+                    int newX = mouse.x - editor.dragOffset.x - min.x - (obj.screen - screenA) * 256;
+                    int newY = mouse.y - editor.dragOffset.y - min.y;
 
-                    obj.x = std::clamp((int)newX, 0, 255);
-                    obj.y = std::clamp((int)newY, 0, 255);
+                    obj.x = std::clamp(newX, 0, 255);
+                    obj.y = std::clamp(newY, 0, 255);
                 }
 
                 if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
@@ -2966,11 +3047,12 @@ void App::drawLevelView()
                     ? IM_COL32(255, 255, 0, 255)
                     : (type == 0 ? IM_COL32(255, 0, 0, 255) : IM_COL32(0, 0, 255, 255));
 
-                dl->AddRect(p0, p1, col, 0.0f, 0, 2.0f);
+                float outline = 2.0f * editor.editorZoom;
+                dl->AddRect(p0, p1, col, 0.0f, 0, outline);
 
                 char buf[8];
                 snprintf(buf, sizeof(buf), "%02d", obj.type);
-                DrawTextOutlined(dl, ImVec2(px + 1, py + 1), IM_COL32(0, 0, 0, 255), buf);
+                DrawTextOutlined(dl, ImVec2(px, py), IM_COL32(0, 0, 0, 255), buf, editor.editorZoom);
 
                 ++index;
             }
@@ -2992,15 +3074,14 @@ void App::drawLevelView()
 
             int x = obj.x, y = obj.y, scr = obj.screen, type = obj.type;
 
-            ImGui::InputInt("X", &x);
-            ImGui::InputInt("Y", &y);
-            ImGui::InputInt("Screen #", &scr);
-            ImGui::InputInt("Type", &type);
-
-            obj.x = std::clamp(x, 0, 255);
-            obj.y = std::clamp(y, 0, 255);
-            obj.screen = std::clamp(scr, 0, 255);
-            obj.type = std::clamp(type, 0, 255);
+            if(ImGui::InputInt("X", &x))
+                obj.x = std::clamp(x, 0, 255);
+            if(ImGui::InputInt("Y", &y))
+                obj.y = std::clamp(y, 0, 255);
+            if(ImGui::InputInt("Screen #", &scr))
+                obj.screen = std::clamp(scr, 0, 255);
+            if(ImGui::InputInt("Type", &type))
+                obj.type = std::clamp(type, 0, 255);
 
             if (obj.screen > editor.currentScreen + 1 || obj.screen < editor.currentScreen)
             {
@@ -3009,52 +3090,276 @@ void App::drawLevelView()
             }
         }
     }
+    else
+    {
+        static bool calc = true;
+        ImGui::Checkbox("Auto Calculate Data Based on current screen", &calc);
+        for (int i = 0; i < editor.checkpointData.size(); ++i)
+        {
+            Checkpoint* c = &editor.checkpointData[i];
+            bool selected = c->screen == editor.currentScreen;
+
+            if (selected)
+            {
+                std::string id = "##" + std::to_string(i);
+                std::string label = "Checkpoint " + std::to_string(i);
+                ImGui::SeparatorText(label.c_str());
+                float newWidth = ImGui::GetContentRegionAvail().x * 0.50f;
+                ImGui::PushItemWidth(newWidth);
+                int screen = c->screen;
+                label = "Screen" + id;
+                if(ImGui::InputInt(label.c_str(), &screen))
+                    screen = std::clamp(screen, 0, 255);
+                int temp = c->y;
+                label = "Y" + id;
+                if (ImGui::InputInt(label.c_str(), &temp, 16))
+                    c->y = std::clamp(temp, 4, 244);
+                if (c->screen != screen)
+                {
+                    c->screen = screen;
+                    editor.currentScreen = c->screen;
+                    if (calc)
+                    {
+                        c->item_index = 0;
+                        c->enemy_index = 0;
+                        for (int x = 0; x < editor.enemyData.size(); ++x)
+                        {
+                            Object& o = editor.enemyData[x];
+                            if (o.screen >= screen)
+                            {
+                                c->enemy_index = x;
+                                break;
+                            }
+                        }
+                        for (int x = 0; x < editor.itemData.size(); ++x)
+                        {
+                            Object& o = editor.itemData[x];
+                            if (o.screen >= screen)
+                            {
+                                c->item_index = x;
+                                break;
+                            }
+                        }
+                        int index = 0;
+                        int totalScreens = 0;
+                        uint8_t scrollByte = 0;
+                        bool previousScreenWouldMoveIndex = false;
+                        while (index < editor.scrollData.size())
+                        {
+                            scrollByte = editor.scrollData[index];
+                            totalScreens += (scrollByte & 0x0F) + 1;
+
+                            if (c->screen + 1 <= totalScreens)
+                                break;
+
+                            ++index;
+                        }
+                        c->scroll = index;
+                            
+                        c->left_screen = c->screen;
+                        c->right_screen = totalScreens - 1;
+                        c->map_back_addr = 0x84E0 + (c->screen * 64);
+                        c->map_forward_addr = c->map_back_addr + 128;
+                    }
+                }
+                if (calc)
+                    ImGui::BeginDisabled();
+
+                label = "Left Scroll Screen" + id;
+                temp = c->left_screen;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    c->left_screen = std::clamp(temp, 0, maxScreens);
+
+                label = "Right Scroll Screen" + id;
+                temp = c->right_screen;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    c->right_screen = std::clamp(temp, 0, maxScreens);
+
+                label = "Scroll Data Index" + id;
+                temp = c->scroll;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    c->scroll = std::clamp(temp, 0, static_cast<int>(editor.scrollData.size()));
+                
+                label = "Enemy Index" + id;
+                temp = c->enemy_index;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    c->enemy_index = std::clamp(temp, 0, static_cast<int>(editor.enemyData.size()));
+                
+                label = "Item Index" + id;
+                temp = c->item_index;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    c->item_index = std::clamp(temp, 0, static_cast<int>(editor.itemData.size()));
+
+                {
+                    char bufBack[5];
+                    snprintf(bufBack, sizeof(bufBack), "%04X", c->map_back_addr);
+
+                    label = "Level Backward Address" + id;
+                    if (ImGui::InputText(label.c_str(), bufBack, sizeof(bufBack),
+                        ImGuiInputTextFlags_CharsHexadecimal))
+                    {
+                        c->map_back_addr = std::clamp((int)strtol(bufBack, nullptr, 16), 0, 0xFFFF);
+                    }
+                }
+
+                {
+                    char bufForward[5];
+                    snprintf(bufForward, sizeof(bufForward), "%04X", c->map_forward_addr);
+
+                    label = "Level Forward Address" + id;
+                    if (ImGui::InputText(label.c_str(), bufForward, sizeof(bufForward),
+                        ImGuiInputTextFlags_CharsHexadecimal))
+                    {
+                        c->map_forward_addr = std::clamp((int)strtol(bufForward, nullptr, 16), 0, 0xFFFF);
+                    }
+                }
+
+                if (calc)
+                    ImGui::EndDisabled();
+
+                float centerX = (min.x + max.x) * 0.5f;
+                float y = min.y + static_cast<float>(c->y * editor.editorZoom);
+                float halfW = 8.0f * editor.editorZoom;
+                float halfH = 12.0f * editor.editorZoom;
+
+                ImVec2 rectMin(floorf(centerX - halfW), floorf(y - halfH));
+                ImVec2 rectMax(floorf(centerX + halfW), floorf(y + halfH));
+
+                dl->AddRectFilled(rectMin, rectMax, IM_COL32(255, 255, 255, 255));
+                dl->AddRect(rectMin, rectMax, IM_COL32(0, 0, 0, 255), 0.0f, 0, 1.0f);
+
+                BGPositionData* bg = &editor.bgPositionData[i];
+                label = "Layer 2 Position Data" + id;
+                ImGui::SeparatorText(label.c_str());
+
+                label = "Layer 2 X" + id;
+                temp = bg->bg2_x;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    bg->bg2_x = std::clamp(temp, 0, 0xFFFF);
+
+                label = "Layer 2 Y" + id;
+                temp = bg->bg2_y;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    bg->bg2_y = std::clamp(temp, 0, 0xFFFF);
+
+                label = "Layer 2 Screen ID" + id;
+                temp = bg->bg2_screenId;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    bg->bg2_screenId = std::clamp(temp, 0, 0xFF);
+
+                label = "Layer 3 Position Data" + id;
+                ImGui::SeparatorText(label.c_str());
+
+                label = "Layer 3 X" + id;
+                temp = bg->bg3_x;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    bg->bg3_x = std::clamp(temp, 0, 0xFFFF);
+
+                label = "Layer 3 Y" + id;
+                temp = bg->bg3_y;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    bg->bg3_y = std::clamp(temp, 0, 0xFFFF);
+
+                label = "Screen ID" + id;
+                temp = bg->scrollId;
+                if (ImGui::InputInt(label.c_str(), &temp))
+                    bg->scrollId = std::clamp(temp, 0, 0xFF);
+            }
+        }
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(320, 240),
+            ImVec2(FLT_MAX, FLT_MAX)
+        );
+        ImGui::Begin("Checkpoint List");
+        ImGui::SeparatorText("Checkpoints");
+        for (int i = 0; i < editor.checkpointData.size(); ++i)
+        {
+            Checkpoint* c = &editor.checkpointData[i];
+            bool selected = c->screen == editor.currentScreen;
+            if (!selected)
+                DrawUnSelectedBox();
+            if (ImGui::Selectable(std::format("{} {}", "Checkpoint", i).c_str(), selected))
+            {
+                editor.currentScreen = c->screen;
+            }
+            
+            ImGui::BulletText("Screen: %u", c->screen);
+            ImGui::BulletText("Left Scroll Screen: %u", c->left_screen);
+            ImGui::BulletText("Right Scroll Screen: %u", c->right_screen);
+            ImGui::BulletText("Enemy Index: %u", c->enemy_index);
+            ImGui::BulletText("Item Index: %u", c->item_index);
+            {
+                char bufBack[5];
+                snprintf(bufBack, sizeof(bufBack), "%04X", c->map_back_addr);
+                ImGui::BulletText("Level Backward Address: %s", bufBack);
+            }
+            {
+                char bufForward[5];
+                snprintf(bufForward, sizeof(bufForward), "%04X", c->map_forward_addr);
+                ImGui::BulletText("Level Forward Address: %s", bufForward);
+            }
+            ImGui::Separator();
+        }
+        ImGui::End();
+
+        ImGui::Begin("Background Position List");
+        ImGui::SeparatorText("Background Position Data");
+        for (int i = 0; i < editor.bgPositionData.size(); ++i)
+        {
+            BGPositionData* bg = &editor.bgPositionData[i];
+            Checkpoint* c = &editor.checkpointData[i];
+            bool selected = c->screen == editor.currentScreen;
+            if (!selected)
+                DrawUnSelectedBox();
+            if (ImGui::Selectable(std::format("{} {}", "Position", i).c_str(), selected))
+            {
+                editor.currentScreen = c->screen;
+            }
+
+            ImGui::BulletText("Screen ID: %u", bg->scrollId);
+            ImGui::BulletText("Layer 2 X: %u", bg->bg2_x);
+            ImGui::BulletText("Layer 2 Y: %u", bg->bg2_y);
+            ImGui::BulletText("Layer 3 X: %u", bg->bg3_x);
+            ImGui::BulletText("Layer 3 Y: %u", bg->bg3_y);
+            ImGui::BulletText("Layer 2 Screen ID", bg->bg2_screenId);
+            ImGui::Separator();
+        }
+        ImGui::End();
+    }
 }
 
-bool App::drawScrollData(std::vector<uint8_t>& data, int screenNum, bool updateScreenId)
+void App::drawScrollData()
 {
-    int index = 0;
-    int screens = 0;
-    uint8_t scrollByte = 0;
-    int screenAmount = 0;
-
-    while (index < data.size())
-    {
-        scrollByte = data[index];
-        screenAmount = (scrollByte & 0x0F) + 1;
-        screens += screenAmount;
-
-        if (screens > screenNum)
-            break;
-
-        ++index;
-    }
-
+    uint8_t scrollByte = editor.scrollData[editor.currentScreenId];
     uint8_t flags = scrollByte & 0xF0;
+    uint8_t screens = (scrollByte & 0x0F) + 1;
 
-    constexpr FlagItem items[] = {
-        { "Scroll Right ",      0x10 },
-        { "Right Edge ",        0x20 },
-        { "Bottom Edge ",       0x40 },
-        { "Top Edge ",          0x80 }
+    constexpr uint8_t items[] = { 0x10, 0x20, 0x40, 0x80 };
+
+    static const std::map<uint8_t, std::string> scrollMap = {
+        { 0x10, "Scroll Right" },
+        { 0x20, "Right Edge"   },
+        { 0x40, "Bottom Edge"  },
+        { 0x80, "Top Edge "    }
     };
 
-    ImGui::Text("Screen Transition Type at scroll stop:");
+    std::string label = "Screen Transition Type ID: " + std::to_string(editor.currentScreenId);
 
-    std::string label;
+    ImGui::SeparatorText(label.c_str());
 
-    for (auto& item : items)
+    for (const uint8_t& item : items)
     {
-        bool checked = flags & item.bit;
+        bool checked = flags & item;
 
-        label = item.name;
-        label += std::to_string(index).c_str();
+        label = scrollMap.at(item);
+        label += " ##";
+        label += std::to_string(editor.currentScreenId).c_str();
         if (ImGui::Checkbox(label.c_str(), &checked))
         {
             if (checked)
-                flags |= item.bit;
+                flags |= item;
             else
-                flags &= ~item.bit;
+                flags &= ~item;
 
             scrollByte = (scrollByte & 0x0F) | flags;
         }
@@ -3062,17 +3367,17 @@ bool App::drawScrollData(std::vector<uint8_t>& data, int screenNum, bool updateS
     }
     ImGui::Text("");
 
-    label = "Screen Amount " + std::to_string(index);
+    label = "Screen Amount ##" + std::to_string(editor.currentScreenId);
 
-    if (ImGui::BeginCombo(label.c_str(), std::to_string(screenAmount).c_str()))
+    if (ImGui::BeginCombo(label.c_str(), std::to_string(screens).c_str()))
     {
         for (int i = 1; i <= 16; ++i)
         {
-            bool selected = (screenAmount == i);
+            bool selected = (screens == i);
             if (ImGui::Selectable(std::to_string(i).c_str(), selected))
             {
-                screenAmount = i;
-                scrollByte = (scrollByte & 0xF0) | ((screenAmount - 1) & 0x0F);
+                screens = i;
+                scrollByte = (scrollByte & 0xF0) | ((screens - 1) & 0x0F);
             }
 
             if (selected)
@@ -3081,65 +3386,114 @@ bool App::drawScrollData(std::vector<uint8_t>& data, int screenNum, bool updateS
         ImGui::EndCombo();
     }
 
-    data[index] = scrollByte;
+    editor.scrollData[editor.currentScreenId] = scrollByte;
 
-    if (updateScreenId)
-        editor.currentScreenId = index;
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(320, 240),
+        ImVec2(FLT_MAX, FLT_MAX)
+    );
+    ImGui::Begin("Scroll Data List");
+    ImGui::SeparatorText("Level Screen ID Data");
+    for (size_t i = 0; i < editor.scrollData.size(); ++i)
+    {
+        bool selected = editor.currentScreenId == i;
 
-    return screens - 1 == screenNum;
+        if (!selected)
+        {
+            DrawUnSelectedBox();
+        }
+
+        if (ImGui::Selectable(std::format("{} {}", "Screen ID", i).c_str(), selected))
+        {
+            int index = 0;
+            int totalScreens = 0;
+
+            while (index < i && index < editor.scrollData.size())
+            {
+                uint8_t scrollByte = editor.scrollData[index];
+                totalScreens += (scrollByte & 0x0F) + 1;
+
+                ++index;
+            }
+            editor.currentScreen = totalScreens;
+            editor.currentScreenId = index;
+        }
+        uint8_t sb = editor.scrollData[i];
+        uint8_t f = sb & 0xF0;
+        uint8_t s = (sb & 0x0F) + 1;
+        std::string l = "";
+
+        for (uint8_t bit = 4; bit < 8; ++bit) 
+        {
+            uint8_t data = 1 << bit;
+            if (f & data) 
+                l += scrollMap.at(data) + ", ";
+        }
+        if (l.size() > 2)
+            l.erase(l.size() - 2);
+        else
+            l = "No Scroll";
+
+        ImGui::BulletText("Scroll Types: %s", l.c_str());
+        ImGui::BulletText("Screens Amount: %u", s);
+        ImGui::Separator();
+    }
+    ImGui::End();
+}
+
+static void DrawBGScrollOptions(const char* label, BGSpeedData& data, float width, const char* idSuffix)
+{
+    ImGui::Text(label);
+    ImGui::PushItemWidth(width);
+
+    int temp = data.scanlines;
+    if(ImGui::InputInt(std::string("Scroll Speed ").append(idSuffix).c_str(), &temp))
+        data.scanlines = std::clamp(temp, 0, 255);
+
+    ImGui::SameLine();
+
+    temp = data.frames;
+    if(ImGui::InputInt(std::string("Wait Frames ").append(idSuffix).c_str(), &temp))
+        data.frames = std::clamp(temp, 0, 255);
+
+    ImGui::PopItemWidth();
 }
 
 void App::drawBGScrollData()
 {
-    /*
-        28 = 32x32 single screen mirroring
-        29 = 64x32 vertical mirroring (horizontal scroll)
-        2A = 32x64 horizontal mirroring (vertical scroll)
-        30 = 32x32 single screen mirroring
-        31 = 64x32 vertical mirroring (horizontal scroll)
-        32 = 32x64 horizontal mirroring (vertical scroll)
-        */
-    constexpr FlagItem layer2Items[] = {
-       { "32x32 Single Screen Sroll",  0x28 },
-       { "64x32 Horizontal Scroll ",   0x29 },
-       { "32x64 Vertical Scroll ",     0x2A }
+    constexpr std::array<uint8_t, 3> layer2Items[] = { 0x28, 0x29, 0x2A };
+    constexpr std::array<uint8_t, 3> layer3Items[] = { 0x30, 0x31, 0x32 };
+
+    static const std::map<uint8_t, std::string> layer2Map = {
+        { 0x28, "32x32 Single Screen Scroll" },
+        { 0x29, "64x32 Horizontal Scroll" },
+        { 0x2A, "32x64 Vertical Scroll" }
     };
 
-    constexpr FlagItem layer3Items[] = {
-        { "32x32 Single Screen Scroll", 0x30 },
-        { "64x32 Horizontal Scroll",    0x31 },
-        { "32x64 Vertical Scroll",      0x32 }
+    static const std::map<uint8_t, std::string> layer3Map = {
+        { 0x30, "32x32 Single Screen Scroll" },
+        { 0x31, "64x32 Horizontal Scroll" },
+        { 0x32, "32x64 Vertical Scroll" }
     };
+
+    std::string label = "Background Layer 2 ID: " + std::to_string(editor.currentScreenId);
+    ImGui::SeparatorText(label.c_str());
 
     BGTilemapMirror& tm = editor.bgTilemapMirror[editor.currentScreenId];
-    std::string label = "Layer 2 Scrolling " + std::to_string(editor.currentScreenId);
     static int screenId = -1;
-    static int layer2option = 0;
-    static int layer3option = 0;
-    if (screenId != editor.currentScreenId)
-    {
-        for (int i = 0; i < 3; ++i)
-        {
-            if (tm.bg2_mode == layer2Items[i].bit)
-                layer2option = i;
-            if (tm.bg3_mode == layer3Items[i].bit)
-                layer3option = i;
-        }
-    }
-    if (ImGui::BeginCombo(label.c_str(), layer2Items[layer2option].name))
-    {
-        for (int i = 0; i < 3; ++i)
-        {
-            bool selected = i == layer2option;
 
-            if (ImGui::Selectable(layer2Items[i].name, selected))
+    if (ImGui::BeginCombo("Mirroring ##04", layer2Map.at(tm.bg2_mode).c_str()))
+    {
+        for (int i = 0; i < layer2Items->size(); ++i)
+        {
+            uint8_t type = layer2Items->at(i);
+            bool selected = type == tm.bg2_mode;
+
+            if (ImGui::Selectable(layer2Map.at(type).c_str(), selected))
             {
-                layer2option = i;
-                tm.bg2_mode = layer2Items[i].bit;
+                tm.bg2_mode = type;
                 editor.rebuildBackgrounds = true;
-                if (i == 1)
-                    editor.scrollLayer2Vertical = false;
-                else if (i == 2)
+                if (i == 2)
                     editor.scrollLayer2Vertical = true;
                 else
                     editor.scrollLayer2Vertical = false;
@@ -3151,24 +3505,30 @@ void App::drawBGScrollData()
         ImGui::EndCombo();
     }
 
-    label = "Layer 3 Scrolling " + std::to_string(editor.currentScreenId);
-    if (ImGui::BeginCombo(label.c_str(), layer3Items[layer3option].name))
-    {
-        for (int i = 0; i < 3; ++i)
-        {
-            bool selected = i == layer3option;
+    float width = ImGui::GetContentRegionAvail().x * 0.20f;
 
-            if (ImGui::Selectable(layer3Items[i].name, selected))
+    DrawBGScrollOptions("Horizontal Data", editor.bgScrollSpeeds[editor.currentScreenId][0], width, "##00");
+    DrawBGScrollOptions("Vertical Data", editor.bgScrollSpeeds[editor.currentScreenId][2], width, "##01");
+
+    label = "Background Layer 3 ID: " + std::to_string(editor.currentScreenId);
+
+    ImGui::SeparatorText(label.c_str());
+
+    if (ImGui::BeginCombo("Mirroring ##05", layer3Map.at(tm.bg3_mode).c_str()))
+    {
+        for (int i = 0; i < layer3Items->size(); ++i)
+        {
+            uint8_t type = layer3Items->at(i);
+            bool selected = type == tm.bg3_mode;
+
+            if (ImGui::Selectable(layer3Map.at(type).c_str(), selected))
             {
-                layer3option = i;
-                tm.bg3_mode = layer3Items[i].bit;
+                tm.bg3_mode = type;
                 editor.rebuildBackgrounds = true;
-                if (i == 1)
-                    editor.scrollLayer3Vertical = false;
-                else if (i == 2)
-                    editor.scrollLayer3Vertical = true;
+                if (i == 2)
+                    editor.scrollLayer2Vertical = true;
                 else
-                    editor.scrollLayer3Vertical = false;
+                    editor.scrollLayer2Vertical = false;
             }
 
             if (selected)
@@ -3177,28 +3537,92 @@ void App::drawBGScrollData()
         ImGui::EndCombo();
     }
 
-    float newWidth = ImGui::GetContentRegionAvail().x * 0.20f;
-    ImGui::PushItemWidth(newWidth);
-    int temp = editor.bgScrollSpeeds[editor.currentScreenId][editor.scrollLayer2Vertical ? 2 : 0].scanlines;
-    ImGui::InputInt("Layer 2 Scroll Speed", &temp);
-    editor.bgScrollSpeeds[editor.currentScreenId][editor.scrollLayer2Vertical ? 2 : 0].scanlines = std::clamp(temp, 0, 255);
+    DrawBGScrollOptions("Horizontal Data", editor.bgScrollSpeeds[editor.currentScreenId][1], width, "##02");
+    DrawBGScrollOptions("Vertical Data", editor.bgScrollSpeeds[editor.currentScreenId][3], width, "##03");
+
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(320, 240),
+        ImVec2(FLT_MAX, FLT_MAX)
+    );
+    ImGui::Begin("Background Data List");
+    float halfWidth = ImGui::GetContentRegionAvail().x * 0.5f;
+    ImVec2 childSize(halfWidth, 0);
+    ImGui::BeginChild("BackgroundScreenIDData", childSize, true);
+    ImGui::SeparatorText("Background Screen ID Data");
+    for (size_t i = 0; i < editor.bgScrollSpeeds.size(); ++i)
+    {
+        bool selected = editor.currentScreenId == i;
+
+        if (!selected)
+        {
+            DrawUnSelectedBox();
+        }
+
+        if (ImGui::Selectable(std::format("{} {}","Screen ID", i).c_str(), selected))
+        {
+            int index = 0;
+            int totalScreens = 0;
+
+            while (index < i && index < editor.scrollData.size())
+            {
+                uint8_t scrollByte = editor.scrollData[index];
+                totalScreens += (scrollByte & 0x0F) + 1;
+
+                ++index;
+            }
+            editor.currentScreen = totalScreens;
+            editor.currentScreenId = index;
+        }
+
+        BGSpeedData* sd = &editor.bgScrollSpeeds[i][0];
+        ImGui::Text("Layer 2");
+        ImGui::BulletText("Horizontal Speed: %u", sd->scanlines);
+        ImGui::BulletText("Horizontal Wait Frames: %u", sd->frames);
+        sd = &editor.bgScrollSpeeds[i][2];
+        ImGui::BulletText("Vertical Speed: %u", sd->scanlines);
+        ImGui::BulletText("Vertical Wait Frames: %u", sd->frames);
+
+        BGTilemapMirror* tmm = &editor.bgTilemapMirror[i];
+        ImGui::BulletText(layer2Map.at(tmm->bg2_mode).c_str());
+
+        sd = &editor.bgScrollSpeeds[i][1];
+        ImGui::Text("Layer 3");
+        ImGui::BulletText("Horizontal Speed: %u", sd->scanlines);
+        ImGui::BulletText("Horizontal Wait Frames: %u", sd->frames);
+        sd = &editor.bgScrollSpeeds[i][3];
+        ImGui::BulletText("Vertical Speed: %u", sd->scanlines);
+        ImGui::BulletText("Vertical Wait Frames: %u", sd->frames);
+
+        ImGui::BulletText(layer3Map.at(tmm->bg3_mode).c_str());
+        
+        ImGui::Separator();
+    }
+    ImGui::EndChild();
 
     ImGui::SameLine();
 
-    temp = editor.bgScrollSpeeds[editor.currentScreenId][editor.scrollLayer2Vertical ? 2 : 0].frames;
-    ImGui::InputInt("Layer 2 Wait Frames", &temp);
-    editor.bgScrollSpeeds[editor.currentScreenId][editor.scrollLayer2Vertical ? 2 : 0].frames = std::clamp(temp, 0, 255);
+    ImGui::BeginChild("BackgroundScrollScreenData", childSize, true);
+    ImGui::SeparatorText("Background Screen Data");
+    for (size_t i = 0; i < editor.bgScrollData.size(); ++i)
+    {
+        bool selected = editor.currentScreen == i;
 
-    temp = editor.bgScrollSpeeds[editor.currentScreenId][editor.scrollLayer2Vertical ? 3 : 1].scanlines;
-    ImGui::InputInt("Layer 3 Scroll Speed", &temp);
-    editor.bgScrollSpeeds[editor.currentScreenId][editor.scrollLayer2Vertical ? 3 : 1].scanlines = std::clamp(temp, 0, 255);
+        if (!selected)
+        {
+            DrawUnSelectedBox();
+        }
 
-    ImGui::SameLine();
-
-    temp = editor.bgScrollSpeeds[editor.currentScreenId][editor.scrollLayer2Vertical ? 3 : 1].frames;
-    ImGui::InputInt("Layer 3 Wait Frames", &temp);
-    editor.bgScrollSpeeds[editor.currentScreenId][editor.scrollLayer2Vertical ? 3 : 1].frames = std::clamp(temp, 0, 255);
-    ImGui::PopItemWidth();
+        if (ImGui::Selectable(std::format("{} {}", "Screen", i).c_str(), selected))
+        {
+            editor.currentScreen = i;
+        }
+        ScrollEnable& se = editor.bgScrollData[i];
+        ImGui::BulletText("Layer 2 Scroll: %s", se.bg2 ? "Enabled" : "Disabled");
+        ImGui::BulletText("Layer 3 Scroll: %s", se.bg3 ? "Enabled" : "Disabled");
+        ImGui::Separator();
+    }
+    ImGui::EndChild();
+    ImGui::End();
 }
 
 void App::saveROMData()
@@ -3237,6 +3661,15 @@ void App::saveROMData()
     if (!editor.bgTilemapMirror.empty())
         saveBGTilemapMirror(editor.rom, level.bg_mirror, editor.bgTilemapMirror);
 
+    if (!editor.checkpointData.empty())
+        saveCheckpoints(editor.rom, level.midpoint_start_y, editor.checkpointData);
+
+    if (!editor.bgPositionData.empty())
+    {
+        saveBGPositionData(editor.rom, level.bg_start, editor.bgPositionData[0]);
+        saveBGPositionData(editor.rom, level.bg_checkpoint, editor.bgPositionData[1]);
+        saveBGPositionData(editor.rom, level.bg_boss, editor.bgPositionData[2]);
+    }
 }
 
 void App::shutdown()

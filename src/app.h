@@ -9,6 +9,7 @@
 #include "snes/tilemap.h"
 #include "game/objects.h"
 #include "game/level.h"
+#include "game/checkpoint.h"
 
 class App {
 public:
@@ -40,7 +41,8 @@ private:
 
     enum LvlViewMode : int {
         LVM_Level = 0,
-        LVM_Objects
+        LVM_Objects,
+        LVM_Checkpoints
     };
 
     enum ActiveWindow : int {
@@ -96,12 +98,13 @@ private:
         bool rebuildBackgrounds = false;
         int currentScreen = 0;
         int currentScreenId = 0;
+        int screenCount = 0;
 
         int tilesetZoom = 1;
         int editorZoom = 1;
 
-        uint32_t layer2Scanlines = 0;
-        uint32_t layer3Scanlines = 0;
+        int layer2Scanlines = 0;
+        int layer3Scanlines = 0;
         ActiveWindow activeWindow = AW_None;
 
         std::vector<uint8_t> rom;
@@ -116,6 +119,7 @@ private:
 
         SNESHeader header{};
         
+        //TODO convert vectors to arrays as most of these are fixed sizes
         std::vector<MM2_Data> data;
         std::vector<Tile> levelTiles;
         std::vector<Tile> layer3Tiles;
@@ -134,6 +138,7 @@ private:
         std::array<std::array<BGSpeedData, 4>, 32> bgScrollSpeeds;
         Objects itemData;
         Objects enemyData;
+        Checkpoints checkpointData;
 
         TilemapTexture tileset;
 
@@ -150,7 +155,6 @@ private:
         int editingColor = -1;
         int selectedObject = -1;
         int objectType = -1;
-        //int editor.currentScreen = 0;
 
         PaletteClipboard palClip;
         ColorClipboard colClip;
@@ -176,7 +180,7 @@ private:
     void drawPaletteWindow();
     void drawLevelWindow();
     void drawHeaderWindow();
-    bool drawScrollData(std::vector<uint8_t>& data, int screenNum, bool updateScreenId);
+    void drawScrollData();
     void drawBGScrollData();
     void saveROMData();
     void drawLevelView();

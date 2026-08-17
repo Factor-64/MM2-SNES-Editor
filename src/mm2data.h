@@ -55,7 +55,7 @@ struct LevelEntry {
 
     // midpoint
     uint32_t midpoint_start_y;
-    uint32_t midpoint_start_room;
+    /*uint32_t midpoint_start_room;
     uint32_t midpoint_enemy_index;
     uint32_t midpoint_item_index;
     uint32_t midpoint_map_back_high;
@@ -64,7 +64,7 @@ struct LevelEntry {
     uint32_t midpoint_map_forward_low;
     uint32_t midpoint_start_scroll;
     uint32_t midpoint_left_room;
-    uint32_t midpoint_right_room;
+    uint32_t midpoint_right_room;*/
 
     // pattern table
     uint32_t pattern;

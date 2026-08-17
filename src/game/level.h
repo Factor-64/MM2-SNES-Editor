@@ -3,22 +3,15 @@
 #include <array>
 
 struct ScrollEnable {
-    bool bg2;
-    bool bg3;
+    bool bg2 = false;
+    bool bg3 = false;
 };
 
-struct BGPositionData {
-    uint8_t scrollId;
-    uint16_t bg2_x;
-    uint16_t bg2_y;
-    uint16_t bg3_x;
-    uint16_t bg3_y;
-    uint8_t bg2_screenId;
-};
+
 
 struct BGTilemapMirror {
-    uint8_t bg2_mode; // 28, 29, 2A
-    uint8_t bg3_mode; // 30, 31, 32
+    uint8_t bg2_mode = 0x28; // 28, 29, 2A
+    uint8_t bg3_mode = 0x30; // 30, 31, 32
     /*
     28 = 32x32 single screen mirroring
     29 = 64x32 vertical mirroring (horizontal scroll)
@@ -47,8 +40,7 @@ void saveScrollData(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<
 std::array<ScrollEnable, 64> loadBackgroundScrollData(const std::vector<uint8_t>& rom, uint32_t addr);
 void saveBackgroundScrollData(std::vector<uint8_t>& rom, uint32_t addr, const std::array<ScrollEnable, 64>& data);
 
-BGPositionData loadBGPositionData(const std::vector<uint8_t>& rom, uint32_t addr);
-void saveBGPositionData(std::vector<uint8_t>& rom, uint32_t addr, const BGPositionData& data);
+
 
 std::array<BGTilemapMirror, 64> loadBGTilemapMirror(const std::vector<uint8_t>& rom, uint32_t addr);
 void saveBGTilemapMirror(std::vector<uint8_t>& rom, uint32_t addr, const std::array<BGTilemapMirror, 64>& data);

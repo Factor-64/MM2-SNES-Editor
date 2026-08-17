@@ -108,20 +108,6 @@ std::array<ScrollEnable, 64> loadBackgroundScrollData(const std::vector<uint8_t>
     return out;
 }
 
-BGPositionData loadBGPositionData(const std::vector<uint8_t>& rom, uint32_t addr)
-{
-    BGPositionData out;
-
-    out.scrollId = rom[addr + 0];
-    out.bg2_x = rom[addr + 1] | (rom[addr + 2] << 8);
-    out.bg2_y = rom[addr + 3] | (rom[addr + 4] << 8);
-    out.bg3_x = rom[addr + 5] | (rom[addr + 6] << 8);
-    out.bg3_y = rom[addr + 7] | (rom[addr + 8] << 8);
-    out.bg2_screenId = rom[addr + 9];
-
-    return out;
-}
-
 std::array<BGTilemapMirror, 64> loadBGTilemapMirror(const std::vector<uint8_t>& rom, uint32_t addr)
 {
     std::array<BGTilemapMirror, 64> out;
@@ -165,25 +151,6 @@ void saveBackgroundScrollData(std::vector<uint8_t>& rom, uint32_t addr, const st
 
         rom[addr + i] = b;
     }
-}
-
-void saveBGPositionData(std::vector<uint8_t>& rom, uint32_t addr, const BGPositionData& data)
-{
-    rom[addr + 0] = data.scrollId;
-
-    rom[addr + 1] = data.bg2_x & 0xFF;
-    rom[addr + 2] = (data.bg2_x >> 8) & 0xFF;
-
-    rom[addr + 3] = data.bg2_y & 0xFF;
-    rom[addr + 4] = (data.bg2_y >> 8) & 0xFF;
-
-    rom[addr + 5] = data.bg3_x & 0xFF;
-    rom[addr + 6] = (data.bg3_x >> 8) & 0xFF;
-
-    rom[addr + 7] = data.bg3_y & 0xFF;
-    rom[addr + 8] = (data.bg3_y >> 8) & 0xFF;
-
-    rom[addr + 9] = data.bg2_screenId;
 }
 
 void saveBGTilemapMirror(std::vector<uint8_t>& rom, uint32_t addr, const std::array<BGTilemapMirror, 64>& data)

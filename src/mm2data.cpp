@@ -146,8 +146,9 @@ static LevelEntry parseLevel(const json& j, const bool hiROM)
         auto& B = j["background"];
         L.bg_tilemap    = parseAddr(B["tilemap"], hiROM);
         L.bg_scroll     = parseAddr(B["scroll_flags"], hiROM);
-        L.bg_start      = parseAddr(B["start"], hiROM);
+        L.bg_start = parseAddr(B["start"], hiROM);
         L.bg_checkpoint = parseAddr(B["checkpoint"], hiROM);
+        L.bg_boss       = parseAddr(B["boss"], hiROM);
         L.bg_mirror     = parseAddr(B["mirror"], hiROM);
         L.bg_speed      = parseAddr(B["speed"], hiROM);
     }
@@ -166,7 +167,7 @@ static LevelEntry parseLevel(const json& j, const bool hiROM)
 
     // midpoint
     L.midpoint_start_y          = getAddr(j["midpoint"], "start_y", hiROM);
-    L.midpoint_start_room       = getAddr(j["midpoint"], "start_screen", hiROM);
+    /*L.midpoint_start_room = getAddr(j["midpoint"], "start_screen", hiROM);
     L.midpoint_enemy_index      = getAddr(j["midpoint"], "enemy_index", hiROM);
     L.midpoint_item_index       = getAddr(j["midpoint"], "item_index", hiROM);
     L.midpoint_map_back_high    = getAddr(j["midpoint"], "map_back_high", hiROM);
@@ -175,7 +176,7 @@ static LevelEntry parseLevel(const json& j, const bool hiROM)
     L.midpoint_map_forward_low  = getAddr(j["midpoint"], "map_forward_low", hiROM);
     L.midpoint_start_scroll     = getAddr(j["midpoint"], "start_scroll", hiROM);
     L.midpoint_left_room        = getAddr(j["midpoint"], "left_screen", hiROM);
-    L.midpoint_right_room       = getAddr(j["midpoint"], "right_screen", hiROM);
+    L.midpoint_right_room       = getAddr(j["midpoint"], "right_screen", hiROM);*/
 
     // pattern table
     L.pattern = parseAddr(j["pattern_table_setting"].get<std::string>(), hiROM);

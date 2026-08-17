@@ -43,6 +43,7 @@ add_executable(SNTE
     src/game/objects.h src/game/objects.cpp
     src/game/collision.h 
     src/snes/address.h src/snes/address.cpp
+    src/game/checkpoint.h src/game/checkpoint.cpp
 )
 
 target_link_libraries(SNTE

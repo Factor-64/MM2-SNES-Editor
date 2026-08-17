@@ -502,7 +502,7 @@
 					"type": "20:BAC0"
 				},
 				"midpoint": {
-					"start_y": "20:BB00",
+					"start_y": "20:BB03",
 					"start_screen": "20:BB06",
 					"enemy_index": "20:BB0C",
 					"item_index": "20:BB12",
@@ -553,7 +553,7 @@
 					"type": "21:BAC0"
 				},
 				"midpoint": {
-					"start_y": "21:BB00",
+					"start_y": "21:BB03",
 					"start_screen": "21:BB06",
 					"enemy_index": "21:BB0C",
 					"item_index": "21:BB12",
@@ -604,7 +604,7 @@
 					"type": "22:BAC0"
 				},
 				"midpoint": {
-					"start_y": "22:BB00",
+					"start_y": "22:BB03",
 					"start_screen": "22:BB06",
 					"enemy_index": "22:BB0C",
 					"item_index": "22:BB12",
@@ -655,7 +655,7 @@
 					"type": "23:BAC0"
 				},
 				"midpoint": {
-					"start_y": "23:BB00",
+					"start_y": "23:BB03",
 					"start_screen": "23:BB06",
 					"enemy_index": "23:BB0C",
 					"item_index": "23:BB12",
@@ -706,7 +706,7 @@
 					"type": "24:BAC0"
 				},
 				"midpoint": {
-					"start_y": "24:BB00",
+					"start_y": "24:BB03",
 					"start_screen": "24:BB06",
 					"enemy_index": "24:BB0C",
 					"item_index": "24:BB12",
@@ -757,7 +757,7 @@
 					"type": "25:BAC0"
 				},
 				"midpoint": {
-					"start_y": "25:BB00",
+					"start_y": "25:BB03",
 					"start_screen": "25:BB06",
 					"enemy_index": "25:BB0C",
 					"item_index": "25:BB12",
