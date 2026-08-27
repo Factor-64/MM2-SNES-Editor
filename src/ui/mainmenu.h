@@ -30,6 +30,8 @@ enum MenuState {
     MS_ExportAllData,
     MS_OpenExportROM,
     MS_OpenHeaderWindow,
+    MS_OpenGraphics,
+    MS_ImportGraphics
 };
 
 void drawMenu(MenuState& state, const bool romLoaded, const bool jsonLoaded, const bool isNES);

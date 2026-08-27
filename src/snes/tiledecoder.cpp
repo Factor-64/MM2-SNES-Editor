@@ -116,13 +116,19 @@ void encodeSNES4bppTile(uint8_t* out, const Tile& t)
     }
 }
 
-void saveTileToROM(Tile& t, std::vector<uint8_t>& rom)
+void saveTileToROM(Tile& t, std::vector<uint8_t>& rom, const bool is2bpp)
 {
-    uint8_t encoded[32];
-    encodeSNES4bppTile(encoded, t);
+    const size_t size = is2bpp ? 16 : 32;
 
-    std::copy(encoded, encoded + 32, rom.begin() + t.romAddress);
+    std::array<uint8_t, 32> encoded;
+    if (is2bpp)
+        encodeSNES2bppTile(encoded.data(), t);
+    else
+        encodeSNES4bppTile(encoded.data(), t);
+
+    std::copy(encoded.begin(), encoded.begin() + size, rom.begin() + t.romAddress);
 }
+
 
 std::vector<Tile> decodeTileRanges(const std::vector<Range>& ranges, const std::vector<uint8_t>& rom, const int tileSize)
 {
@@ -146,6 +152,30 @@ std::vector<Tile> decodeTileRanges(const std::vector<Range>& ranges, const std::
             out.push_back(t);
             pos += tileSize;
         }
+    }
+
+    return out;
+}
+
+std::vector<Tile> decodeTileRange(const Range& range, const std::vector<uint8_t>& rom, const int tileSize)
+{
+    std::vector<Tile> out;
+
+    // SNES 4bpp tile = 32 bytes
+    // SNES 2bpp tile = 16 bytes
+
+    uint32_t pos = range.start;
+
+    while (pos + tileSize <= range.end)
+    {
+        Tile t;
+        if (tileSize == 16)
+            t = decodeSNES2bppTile(&rom[pos]);
+        else if (tileSize == 32)
+            t = decodeSNES4bppTile(&rom[pos]);
+        t.romAddress = pos;
+        out.push_back(t);
+        pos += tileSize;
     }
 
     return out;

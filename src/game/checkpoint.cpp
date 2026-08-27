@@ -29,7 +29,7 @@ Checkpoints loadCheckpoints(std::vector<uint8_t>& rom, uint32_t addr)
 
 void saveCheckpoints(std::vector<uint8_t>& rom, uint32_t addr, const Checkpoints& c)
 {
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 3; ++i)
     {
         rom[addr + i] = c[i].y;
         rom[addr + 0x06 + i] = c[i].screen;
@@ -39,8 +39,8 @@ void saveCheckpoints(std::vector<uint8_t>& rom, uint32_t addr, const Checkpoints
         rom[addr + 0x18 + i] = (c[i].map_back_addr >> 8) & 0xFF;  // high byte
         rom[addr + 0x1E + i] = c[i].map_back_addr & 0xFF;  // low byte
 
-        rom[addr + 0x24 + i] = (c[i].map_forward_addr >> 8) & 0xFF;  // high byte
-        rom[addr + 0x2A + i] = c[i].map_forward_addr & 0xFF;  // low byte
+        rom[addr + 0x24 + i] = (c[i].map_forward_addr >> 8) & 0xFF;
+        rom[addr + 0x2A + i] = c[i].map_forward_addr & 0xFF;
 
         rom[addr + 0x30 + i] = c[i].scroll;
         rom[addr + 0x36 + i] = c[i].left_screen;

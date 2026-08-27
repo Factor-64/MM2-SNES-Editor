@@ -29,6 +29,11 @@ target_link_libraries(ImGuiFileDialog PUBLIC imgui)
 
 target_link_libraries(imgui PUBLIC SDL3::SDL3 glad)
 
+add_library(lodepng external/lodepng/lodepng.cpp)
+target_include_directories(lodepng PUBLIC external/lodepng)
+
+target_link_libraries(glad PUBLIC lodepng)
+
 add_executable(SNTE
     src/main.cpp
     src/app.h src/app.cpp
@@ -44,6 +49,7 @@ add_executable(SNTE
     src/game/collision.h 
     src/snes/address.h src/snes/address.cpp
     src/game/checkpoint.h src/game/checkpoint.cpp
+    src/imageloader.h src/imageloader.cpp
 )
 
 target_link_libraries(SNTE

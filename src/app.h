@@ -18,9 +18,15 @@ public:
     void run();
 
 private:
-    struct FlagItem {
-        const char* name;
-        uint8_t bit;
+    struct TileEditResult {
+        bool clicked = false;
+        int px = 0;
+        int py = 0;
+    };
+
+    struct TileLink {
+        int tile = -1;
+        int imgTile = -1;
     };
 
     enum ViewMode : int {
@@ -49,7 +55,8 @@ private:
         AW_None,
         AW_Palette,
         AW_Tileset,
-        AW_Editor
+        AW_Editor,
+        AW_Graphics
     };
 
     enum PaletteType : int {
@@ -73,6 +80,15 @@ private:
         bool hasData = false;
         Object obj;
         int type = 0;
+    };
+
+    struct ImageData {
+        Palette pal;
+        std::vector<Tile> tiles4bpp;
+        std::vector<Tile> tiles2bpp;
+        TilemapTexture texture;
+        bool is2bpp = false;
+        bool reload = false;
     };
 
     struct EditorState {
@@ -102,6 +118,7 @@ private:
 
         int tilesetZoom = 1;
         int editorZoom = 1;
+        int graphicsZoom = 2;
 
         int layer2Scanlines = 0;
         int layer3Scanlines = 0;
@@ -113,7 +130,7 @@ private:
         Palettes aniPalettes;
         Palettes subPalettes;
 
-        PaletteType paletteType;
+        PaletteType paletteType = PT_Normal;
 
         int mode = 1;
 
@@ -167,6 +184,8 @@ private:
         PalAnimation animate;
         int animFrame = 0;
         int animTimer = 0;
+
+        ImageData image;
     };
 
     SDL_Window* window = nullptr;
@@ -187,7 +206,7 @@ private:
     void drawTileView();
     void SelectTileFromClick(int tileX, int tileY, int atlasWidth);
     void PaintTileGeneric(int tileX, int tileY, int atlasWidth, const bool color);
-    void PaintTilePixel(int tileIndex, int x, int y);
+    void PaintTilePixel(int tileIndex, int x, int y, bool is2bpp);
     void PaintMacroTilePixel(int macroIndex, int x, int y);
     void DrawColorButton(const std::string& id, ColorRGBA& col, const PaletteType type, size_t paletteIndex, int colorIndex, const char* popupName, const LevelEntry& level, ImVec2 size = ImVec2(0, 0));
     void DrawPaletteRow(const char* label, size_t index, Palette& pal, int colorsPerPalette, const PaletteType type, const char* popupName, const char* ident, const LevelEntry& level);
@@ -206,7 +225,9 @@ private:
     void drawEditMode();
     void PaintTileBackground(std::vector<BGTileData>& data, int tileX, int tileY, int atlasWidth, const bool color, const bool subPal);
     void updateScollPreview();
-
+    void drawGraphicsWindow();
+    TileEditResult DrawTileEdit(TilemapTexture& tex, int& selX, int& selY, const int& tileW, const int& tileH, const float& scale, const Palette& pal, const int& psize, int& selectedColor, const int& trueWidth, const int& trueHeight);
+    bool DrawGraphicsTileEdit(ImDrawList* dl, TilemapTexture& tex, std::vector<Tile>& tiles, const ImVec2& min, const int& tileIdx, const int& atlasWidth, const int& tileW, const int& tileH, const bool imgPal, bool x2, int& selectedColor, const int& trueWidth, const int& trueHeight);
     std::vector<uint8_t> exportData;
     int currentExportIndex = -1;
 
@@ -218,6 +239,7 @@ private:
 
     bool open = true;
     bool openHeader = false;
+    bool openGraphics = true;
     bool exportingAllData = false;
     bool exportingData = false;
 };

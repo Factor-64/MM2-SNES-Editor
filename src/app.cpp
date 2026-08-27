@@ -11,6 +11,7 @@
 #include "game/collision.h"
 #include <bit>
 #include "snes/address.h"
+#include "imageloader.h"
 #include <print>
 
 App::App()
@@ -120,6 +121,22 @@ void App::run()
 
         switch (menuState)
         {
+        case MS_ImportGraphics: {
+            if (!ImGuiFileDialog::Instance()->IsOpened())
+            {
+                IGFD::FileDialogConfig config;
+                config.countSelectionMax = 1;
+
+                ImGuiFileDialog::Instance()->OpenDialog(
+                    "ChooseIndexedImage",
+                    "Select Index Image File",
+                    "PNG (*.png){.png},BMP (*.bmp){.bmp}",
+                    config
+                );
+            }
+            menuState = MS_NULL;
+            break;
+        }
         case MS_OpenLoadJson: {
             if (!ImGuiFileDialog::Instance()->IsOpened())
             {
@@ -188,6 +205,11 @@ void App::run()
         }
         case MS_OpenHeaderWindow: {
             openHeader = true;
+            menuState = MS_NULL;
+            break;
+        }
+        case MS_OpenGraphics: {
+            openGraphics = true;
             menuState = MS_NULL;
             break;
         }
@@ -418,6 +440,41 @@ void App::run()
                             editor.rebuildData = true;
                         }
                     }
+                    else if (key == "ChooseIndexedImage")
+                    {
+                        std::string filename = ImGuiFileDialog::Instance()->GetCurrentFileName();
+
+                        std::string ext;
+                        {
+                            size_t dot = filename.find_last_of('.');
+                            if (dot != std::string::npos)
+                                ext = filename.substr(dot + 1);
+                        }
+
+                        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+                        std::vector<uint8_t> pixels;
+                        int width = 0, height = 0;
+                        bool success = false;
+
+                        if (ext == "png") 
+                        {
+                            success = loadIndexedPNG(path, editor.image.pal, pixels, width, height);
+                        }
+                        else if (ext == "bmp")
+                        {
+                            success = loadIndexedBMP(path, editor.image.pal, pixels, width, height);
+                        }
+                        if (success)
+                        {
+                            editor.image.tiles4bpp = extractTiles(pixels, width, height);
+                            if(editor.mode == 0)
+                                editor.image.tiles4bpp = convert4bppTo2bpp(editor.image.tiles4bpp);
+                            else
+                                editor.image.tiles2bpp = convert4bppTo2bpp(editor.image.tiles4bpp);
+                            editor.image.reload = true;
+                        }
+                    }
                 }
                 else
                 {
@@ -430,13 +487,12 @@ void App::run()
                 ImGuiFileDialog::Instance()->Close();
             }
         }
-
-        if (editor.jsonLoaded && editor.romLoaded && editor.paletteLoaded)
+        if (editor.romLoaded && editor.jsonLoaded && editor.paletteLoaded)
         {
             bool ctrl = ImGui::GetIO().KeyCtrl;
             int zoomDelta = 0;
 
-            if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Equal)) zoomDelta = +1;
+            if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Equal)) zoomDelta = 1;
             if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Minus)) zoomDelta = -1;
 
             if (zoomDelta != 0)
@@ -458,18 +514,26 @@ void App::run()
                     else if (editor.editorZoom > 8)
                         editor.editorZoom = 8;
                     break;
-
+                case AW_Graphics:
+                    editor.graphicsZoom += zoomDelta;
+                    if (editor.graphicsZoom < 1)
+                        editor.graphicsZoom = 1;
+                    else if (editor.graphicsZoom > 8)
+                        editor.graphicsZoom = 8;
+                    break;
                 default:
                     break;
                 }
             }
+
             drawPaletteWindow();
             drawTilesetWindow();
             drawLevelWindow();
             if (openHeader)
                 drawHeaderWindow();
+            if (openGraphics)
+                drawGraphicsWindow();
         }
-
         /*if (menuState.openSettings)
         {
             ImGui::Begin("Settings", &open);
@@ -813,8 +877,6 @@ void App::drawTilesetWindow()
                     editor.tileViewMode = VM_Tileset;
                 drawPaletteWindow();
             }
-            if (selected)
-                ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
@@ -833,8 +895,6 @@ void App::drawTilesetWindow()
                 editor.selectedLevel = i;
                 drawPaletteWindow();
             }
-            if (selected)
-                ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
@@ -843,8 +903,6 @@ void App::drawTilesetWindow()
     const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
     const auto& gfx = editor.data[editor.mode].gfx;
     auto levelGfx = gfx.at(levelName);
-
-    int common = 0;
 
     if (gfx.find("common") != gfx.end())
     {
@@ -1002,8 +1060,6 @@ void App::drawTilesetWindow()
                 editor.rebuildView = true;
                 editor.rebuildTileset = true;
             }
-            if (selected)
-                ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
@@ -1266,8 +1322,6 @@ void App::DrawAnimatedPalettes(int colorsPerPalette, int colorsPerFrame, const c
                 editor.aniPalIndex = i;
                 changed = true;
             }
-            if (selected)
-                ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
@@ -1657,8 +1711,6 @@ void App::drawPaletteWindow()
                 editor.paletteIndex = i;
                 editor.rebuildTileset = true;
             }
-            if (selected)
-                ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
@@ -1676,8 +1728,6 @@ void App::drawPaletteWindow()
                     editor.subPaletteIndex = i;
                     editor.rebuildTileset = true;
                 }
-                if (selected)
-                    ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
         }
@@ -1770,6 +1820,27 @@ void App::drawLevelWindow()
     ImGui::End();
 }
 
+inline void DrawNearestImage(ImDrawList* dl, const TilemapTexture& tileset, const ImVec2& size, const ImVec2& c1, const ImVec2& c2, const ImVec2 pos = ImVec2(-1, -1))
+{
+    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+
+    dl->AddCallback(platform_io.DrawCallback_SetSamplerNearest, nullptr);
+
+    if (pos.x > -1)
+    {
+        dl->AddImage((ImTextureID)(intptr_t)tileset.tex,
+            pos,
+            ImVec2(pos.x + size.x, pos.y + size.y),
+            c1, c2);
+    }
+    else
+    {
+        ImGui::Image((ImTextureID)(intptr_t)tileset.tex, size, c1, c2);
+    }
+
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+}
+
 void App::drawHeaderWindow()
 {
     ImGui::SetNextWindowSizeConstraints(
@@ -1801,80 +1872,51 @@ void App::drawHeaderWindow()
     ImGui::End();
 }
 
-inline void DrawNearestImage(ImDrawList* dl, const TilemapTexture& tileset, const ImVec2& size, const ImVec2& c1, const ImVec2& c2, const ImVec2 pos = ImVec2(-1,-1))
-{
-    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-
-    dl->AddCallback(platform_io.DrawCallback_SetSamplerNearest, nullptr);
-
-    if (pos.x > -1)
-    {
-        dl->AddImage((ImTextureID)(intptr_t)tileset.tex,
-            pos,
-            ImVec2(pos.x + size.x, pos.y + size.y),
-            c1, c2);
-    }
-    else
-    {
-        ImGui::Image((ImTextureID)(intptr_t)tileset.tex, size, c1, c2);
-    }
-
-    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
-}
-
-inline bool GetTileUnderMouse(const ImVec2& min, int s, int& outX, int& outY)
+inline void GetTileUnderMouse(const ImVec2& min, int w, int h, int& outX, int& outY)
 {
     ImVec2 mouse = ImGui::GetMousePos();
     ImVec2 rel(mouse.x - min.x, mouse.y - min.y);
 
-    outX = static_cast<int>(rel.x / s);
-    outY = static_cast<int>(rel.y / s);
-
-    return true;
+    outX = static_cast<int>(rel.x / w);
+    outY = static_cast<int>(rel.y / h);
 }
 
-inline void DrawGrid(ImDrawList* dl, const ImVec2& min, const ImVec2& max, int s, ImU32 color = IM_COL32(80, 80, 80, 128))
+inline void DrawGrid(ImDrawList* dl, const ImVec2& min, const ImVec2& max, int w, int h, ImU32 color = IM_COL32(80, 80, 80, 128))
 {
-    int cols = (max.x - min.x) / s;
-    int rows = (max.y - min.y) / s;
+    int cols = (max.x - min.x) / w;
+    int rows = (max.y - min.y) / h;
 
     for (int x = 0; x <= cols; ++x)
-        dl->AddLine(ImVec2(min.x + x * s, min.y), ImVec2(min.x + x * s, max.y), color);
+        dl->AddLine(ImVec2(min.x + x * w, min.y), ImVec2(min.x + x * w, max.y), color);
 
     for (int y = 0; y <= rows; ++y)
-        dl->AddLine(ImVec2(min.x, min.y + y * s), ImVec2(max.x, min.y + y * s), color);
+        dl->AddLine(ImVec2(min.x, min.y + y * h), ImVec2(max.x, min.y + y * h), color);
 }
 
-inline void DrawHoverHighlight(ImDrawList* dl, const ImVec2& min, int s, int x, int y)
+inline void DrawHoverHighlight(ImDrawList* dl, const ImVec2& min, int w, int h, int x, int y)
 {
-    float x0 = min.x + x * s;
-    float y0 = min.y + y * s;
-    float x1 = x0 + s;
-    float y1 = y0 + s;
+    float x0 = min.x + x * w;
+    float y0 = min.y + y * h;
+    float x1 = x0 + w;
+    float y1 = y0 + h;
 
     dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(100, 150, 255, 60));
     dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(100, 150, 255, 255), 0, 0, 2.0f);
 }
 
-inline void DrawSelectedOutline(ImDrawList* dl, const ImVec2& min, int s, int x, int y)
+inline void DrawSelectedOutline(ImDrawList* dl, const ImVec2& min, int w, int h, int x, int y, ImU32 color = IM_COL32(255, 255, 0, 40), bool outline = true)
 {
-    float x0 = min.x + x * s;
-    float y0 = min.y + y * s;
-    float x1 = x0 + s;
-    float y1 = y0 + s;
+    float x0 = min.x + x * w;
+    float y0 = min.y + y * h;
+    float x1 = x0 + w;
+    float y1 = y0 + h;
 
-    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, 40));
-    dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, 255), 0, 0, 2.0f);
+    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), color);
+    if(outline)
+        dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, 255), 0, 0, 2.0f);
 }
 
-inline void DrawTilePreview(
-    ImDrawList* dl,
-    const ImVec2& min,
-    int ts,
-    int s,
-    int tileX, int tileY,
-    int atlasX, int atlasY,
-    const TilemapTexture& tileset)
+inline void DrawTilePreview(ImDrawList* dl, const ImVec2& min, int ts, int s, int tileX, int tileY, int atlasX, int atlasY, const TilemapTexture& tileset)
 {
     float x0 = min.x + tileX * ts;
     float y0 = min.y + tileY * ts;
@@ -2018,7 +2060,7 @@ inline void App::PaintMacroTilePixel(int macroIndex, int x, int y)
     editor.rebuildEdit = true;
 }
 
-inline void App::PaintTilePixel(int tileIndex, int x, int y)
+inline void App::PaintTilePixel(int tileIndex, int x, int y, bool is2bpp)
 {
     Tile& t = editor.levelTiles[tileIndex];
 
@@ -2027,7 +2069,7 @@ inline void App::PaintTilePixel(int tileIndex, int x, int y)
 
     t.pixels[y * 8 + x] = editor.selectedColor;
 
-    saveTileToROM(t, editor.rom);
+    saveTileToROM(t, editor.rom, is2bpp);
 
     editor.rebuildTileset = true;
     editor.rebuildEdit = true;
@@ -2192,6 +2234,711 @@ inline void DrawUnSelectedBox()
     );
 }
 
+App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY, const int& tileW, const int& tileH, const float& scale, const Palette& pal, const int& psize, int& selectedColor, const int& trueWidth, const int& trueHeight)
+{
+    TileEditResult out{};
+
+    float u0 = (selX * tileW) / float(trueWidth);
+    float v0 = (selY * tileH) / float(trueHeight);
+    float u1 = ((selX + 1) * tileW) / float(trueWidth);
+    float v1 = ((selY + 1) * tileH) / float(trueHeight);
+
+    ImVec2 bigSize(tileW * scale, tileH * scale);
+
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+    ImGui::SeparatorText("Selected Tile");
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    DrawNearestImage(dl, tex, bigSize, ImVec2(u0, v0), ImVec2(u1, v1));
+
+    ImVec2 bigMin = ImGui::GetItemRectMin();
+    ImVec2 bigMax = ImGui::GetItemRectMax();
+
+    DrawGrid(dl, bigMin, bigMax, scale * 2, scale * 2);
+
+    for (int i = 0; i < psize; ++i)
+    {
+        ImVec4 c(
+            pal[i].r / 255.f,
+            pal[i].g / 255.f,
+            pal[i].b / 255.f,
+            1.f
+        );
+
+        std::string id = "color_" + std::to_string(i);
+
+        if (ImGui::ColorButton(id.c_str(), c, 0, ImVec2(20, 20)))
+            selectedColor = i;
+
+        if (selectedColor == i)
+        {
+            ImVec2 p0 = ImGui::GetItemRectMin();
+            ImVec2 p1 = ImGui::GetItemRectMax();
+            dl->AddRect(p0, p1, IM_COL32(255, 255, 0, 255), 0, 0, 2.0f);
+        }
+
+        if ((i % 8) != 7)
+            ImGui::SameLine();
+    }
+
+    ImGui::NewLine();
+
+    ImVec2 mouse = ImGui::GetMousePos();
+    bool inside =
+        mouse.x >= bigMin.x && mouse.x < bigMax.x &&
+        mouse.y >= bigMin.y && mouse.y < bigMax.y;
+
+    if (inside && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    {
+        out.clicked = true;
+        out.px = int((mouse.x - bigMin.x) / (scale * 2));
+        out.py = int((mouse.y - bigMin.y) / (scale * 2));
+    }
+
+    ImGui::EndGroup();
+    return out;
+}
+
+void HandleTileLink(int idx, bool prg, std::array<int, 1024>& linkFromTile, std::unordered_map<int, int>& linkFromImgTile, int& linkingTile, bool& linkingPRG)
+{
+    if (prg)
+    {
+        if (linkFromTile[idx] != -1)
+        {
+            int B = linkFromTile[idx];
+            linkFromTile[idx] = -1;
+            linkFromImgTile.erase(B);
+            linkingTile = -1;
+            return;
+        }
+    }
+    else
+    {
+        if (linkFromImgTile.contains(idx))
+        {
+            int A = linkFromImgTile[idx];
+            linkFromImgTile.erase(idx);
+            linkFromTile[A] = -1;
+            linkingTile = -1;
+            return;
+        }
+    }
+
+    if (linkingTile == -1)
+    {
+        linkingTile = idx;
+        linkingPRG = prg;
+        return;
+    }
+
+    int first = linkingTile;
+    int second = idx;
+
+    // If linking started from prgrom:
+    // first = A, second = B
+    // If linking started from image:
+    // first = B, second = A
+    int A = linkingPRG ? first : second;
+    int B = linkingPRG ? second : first;
+
+    // Remove old links on A
+    if (linkFromTile[A] != -1)
+    {
+        int oldB = linkFromTile[A];
+        linkFromImgTile.erase(oldB);
+    }
+
+    if (linkFromImgTile.contains(B))
+    {
+        int oldA = linkFromImgTile[B];
+        linkFromTile[oldA] = -1;
+    }
+
+    linkFromTile[A] = B;
+    linkFromImgTile[B] = A;
+
+    linkingTile = -1;
+}
+
+void ClearAllLinks(std::array<int, 1024>& linkFromTile, std::unordered_map<int, int>& linkFromImgTile, int& linkingTile, bool& linkingPGR)
+{
+    linkFromTile.fill(-1);
+    linkFromImgTile.clear();
+    linkingTile = -1;
+    linkingPGR = false;
+}
+
+
+ImU32 ColorFromIndex(int idx)
+{
+    float hue = static_cast<float>(idx) / 1024.0f;
+
+    float r, g, b;
+    ImGui::ColorConvertHSVtoRGB(hue, 1.0f, 1.0f, r, g, b);
+
+    return IM_COL32(
+        static_cast<uint8_t>(r * 255),
+        static_cast<uint8_t>(g * 255),
+        static_cast<uint8_t>(b * 255),
+        60
+    );
+}
+
+
+void App::drawGraphicsWindow()
+{
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(320, 240),
+        ImVec2(FLT_MAX, FLT_MAX)
+    );
+    ImGui::Begin("Graphics Viewer", &openGraphics);
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow))
+    {
+        editor.activeWindow = AW_Graphics;
+    }
+    static Range range;
+    static int tileDisplay = 1;
+    static std::vector<Tile> tiles;
+    static TilemapTexture tex;
+    static uint8_t shape = 0;
+    static bool rebuild = false;
+    static bool imgPal = false;
+    static bool imgClicked = false;
+    static bool continueCopy = false;
+    static int paletteIndex = 0;
+    static int subPaletteIndex = 0;
+    constexpr uint32_t range_max = 0x8000;
+    constexpr uint8_t formatSize[] = { 16, 32 };
+    constexpr uint8_t tileSize[][2] = { {8, 8}, {8, 16}, {16, 16} };
+
+    static std::array<int, 1024> linkFromTile = [] {
+        std::array<int, 1024> arr{};
+        arr.fill(-1);
+        return arr;
+    }();
+    static std::unordered_map<int, int> linkFromImgTile;
+    static int linkingTile = -1;
+    static bool linkingPRG = false;
+
+    static int tileIdx = -1;
+
+    ImGui::Text("Current Address:  ");
+
+    ImGui::SameLine();
+
+    if (continueCopy)
+        ImGui::BeginDisabled();
+
+    if (ImGui::Button("<<"))
+        range.start = (range.start >= range_max) ? range.start - range_max : 0;
+    ImGui::SameLine(0, 0);
+    if (ImGui::Button("<"))
+        range.start = (range.start >= formatSize[tileDisplay]) ? range.start - formatSize[tileDisplay] : 0;
+
+    ImGui::SameLine(0, 0);
+    float newWidth = ImGui::GetContentRegionAvail().x * 0.75f;
+    ImGui::PushItemWidth(newWidth);
+    char buf[7];
+    snprintf(buf, sizeof(buf), "%06X", range.start);
+
+    if (ImGui::InputText("##CA", buf, sizeof(buf),
+        ImGuiInputTextFlags_CharsHexadecimal))
+    {
+        long value = strtol(buf, nullptr, 16);
+        value = std::clamp(value, 0L, 0xFFFFFFL);
+        range.start = static_cast<uint32_t>(value);
+    }
+    ImGui::PopItemWidth();
+    ImGui::SameLine(0, 0);
+
+    if (ImGui::Button(">"))
+        range.start = std::min<uint32_t>(range.start + formatSize[tileDisplay], 0xFFFFFF);
+    ImGui::SameLine(0, 0);
+    if (ImGui::Button(">>"))
+        range.start = std::min<uint32_t>(range.start + range_max, 0xFFFFFF);
+
+    if (range.start > editor.rom.size() - range_max)
+        range.start = editor.rom.size() - range_max;
+
+    auto& names = editor.data[editor.mode].levelNames;
+    const std::string& levelName = names[editor.selectedLevel];
+    const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
+    const auto& gfx = editor.data[editor.mode].gfx;
+    auto levelGfx = gfx.at(levelName);
+    auto commonGfx = gfx.at("common");
+    ImGui::PushItemWidth(newWidth);
+    ImGui::Text("Common Graphics:  ");
+
+    ImGui::SameLine();
+    if (ImGui::BeginCombo("##CG", buf))
+    {
+        for (size_t i = 0; i < commonGfx.layer12.size(); ++i)
+        {
+            bool selected = commonGfx.layer12[i].start == range.start;
+            std::stringstream ss;
+            ss << std::uppercase << std::hex << commonGfx.layer12[i].start;
+            std::string hex_str = ss.str();
+            if (ImGui::Selectable(hex_str.c_str(), selected))
+            {
+                range.start = commonGfx.layer12[i].start;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::Text("Level Graphics:   ");
+
+    ImGui::SameLine();
+    if (ImGui::BeginCombo("##LG", buf))
+    {
+        for (size_t i = 0; i < levelGfx.layer12.size(); ++i)
+        {
+            bool selected = levelGfx.layer12[i].start == range.start;
+            std::stringstream ss;
+            ss << std::uppercase << std::hex << levelGfx.layer12[i].start;
+            std::string hex_str = ss.str();
+            if (ImGui::Selectable(hex_str.c_str(), selected))
+            {
+                range.start = levelGfx.layer12[i].start;
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    if (continueCopy)
+        ImGui::EndDisabled();
+    ImGui::Text("Display:          ");
+
+    ImGui::SameLine();
+
+    const static char* displayList[] = { "8x8", "8x16", "16x16" };
+    if (ImGui::BeginCombo("##DSP", displayList[shape]))
+    {
+        for (int i = 0; i < 3; ++i)
+        {
+            bool selected = shape == i;
+            if (ImGui::Selectable(displayList[i], selected))
+            {
+                shape = i;
+                rebuild = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    
+    if (editor.mode)
+    {
+        ImGui::Text("Format:           ");
+
+        ImGui::SameLine();
+
+        const static char* formatList[] = { "2bpp", "4bpp" };
+        if (ImGui::BeginCombo("##FL", formatList[tileDisplay]))
+        {
+            for (int i = 0; i < 2; ++i)
+            {
+                bool selected = tileDisplay == i;
+                if (ImGui::Selectable(formatList[i], selected))
+                {
+                    tileDisplay = i;
+                    rebuild = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
+    else
+    {
+        if (tileDisplay != 1)
+        {
+            tileDisplay = 1;
+            rebuild = true;
+        }
+    }
+
+    const bool is2bpp = tileDisplay == 0;
+    bool palChange = false;
+
+    ImGui::Text("Palette Index:    ");
+    ImGui::SameLine();
+
+    if (ImGui::BeginCombo("##GPI", std::to_string(paletteIndex).c_str()))
+    {
+        int size = 8;
+        if(editor.mode) 
+            size = is2bpp ? 2 : 16;
+        
+        if (paletteIndex >= size)
+            paletteIndex = 0;
+        
+        for (int i = 0; i < size; ++i)
+        {
+            bool selected = paletteIndex == i;
+            if (ImGui::Selectable(std::to_string(i).c_str(), selected))
+            {
+                palChange = true;
+                paletteIndex = i;
+                rebuild = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    if (editor.mode)
+    {
+        ImGui::Text("Sub-Palette Index:");
+        ImGui::SameLine();
+
+        if (ImGui::BeginCombo("##SPI", std::to_string(subPaletteIndex).c_str()))
+        {
+            for (int i = 0; i < 4; ++i)
+            {
+                bool selected = subPaletteIndex == i;
+                if (ImGui::Selectable(std::to_string(i).c_str(), selected))
+                {
+                    palChange = true;
+                    subPaletteIndex = i;
+                    rebuild = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    //ImGui::Text("Imported Graphics will use the formats selected above");
+    //ImGui::Text("Imported Graphics will start at the current address and go till the end of the .bmp");
+    
+    //ImGui::Text("The palette will replace the currently selected palette/sub-palette");
+    //ImGui::Text("Only the first 16/4 colors of the .bmp file will be used");
+    if (ImGui::Button("Load Indexed Image"))
+    {
+        if(menuState == MS_NULL)
+            menuState = MS_ImportGraphics;
+    }
+
+    if (range.end != range.start + range_max || tex.tex == 0 || rebuild)
+    {
+        if(!palChange)
+            ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
+        editor.image.reload = rebuild;
+        rebuild = false;
+        range.end = range.start + range_max;
+        int mapWidth = shape == 2 ? 8 : 16;
+        tiles = decodeTileRange(range, editor.rom, formatSize[tileDisplay]);
+        TileMap tilemap = makeTileMap(tiles, mapWidth, shape);
+
+        std::vector<ColorRGBA> outPixels;
+
+        if (tex.tex != 0)
+            glDeleteTextures(1, &tex.tex);
+
+        ColorRGBA bgColor;
+
+        renderTileMapToRGBA(tilemap, tiles, imgPal ? editor.image.pal : editor.aniPalettes[paletteIndex], bgColor, outPixels, tex.width, tex.height);
+        uploadTilemapTextureRGBA(outPixels, tex);
+    }
+
+    std::vector<Tile>& imgTiles = (is2bpp ? editor.image.tiles2bpp : editor.image.tiles4bpp);
+
+    if (!imgTiles.empty())
+    {
+        if (ImGui::Checkbox("Use Image Palette", &imgPal))
+            rebuild = true;
+
+        ImGui::Text("Right click a PGR Tile and an Image tile to link them");
+
+        if (editor.image.reload)
+        {
+            editor.image.reload = false;
+            int mapWidth = shape == 2 ? 8 : 16;
+            TileMap tilemap = makeTileMap(imgTiles, mapWidth, shape);
+
+            std::vector<ColorRGBA> outPixels;
+
+            if (editor.image.texture.tex != 0)
+                glDeleteTextures(1, &editor.image.texture.tex);
+
+            ColorRGBA bgColor;
+
+            renderTileMapToRGBA(tilemap, imgTiles, imgPal ? editor.image.pal : editor.aniPalettes[paletteIndex], bgColor, outPixels, editor.image.texture.width, editor.image.texture.height);
+            uploadTilemapTextureRGBA(outPixels, editor.image.texture);
+        }
+    }
+    ImGui::PopItemWidth();
+
+    int trueWidth = tex.width * editor.graphicsZoom;
+    int trueHeight = tex.height * editor.graphicsZoom;
+
+    ImGui::BeginChild("PGRGraphics", ImVec2(trueWidth, trueHeight), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    DrawNearestImage(dl, tex, ImVec2(trueWidth, trueHeight), ImVec2(0, 0), ImVec2(1, 1));
+
+    ImVec2 min = ImGui::GetItemRectMin();
+    ImVec2 max = ImGui::GetItemRectMax();
+
+    bool hovering = ImGui::IsItemHovered();
+
+    const int tileW = tileSize[shape][0] * editor.graphicsZoom;
+    const int tileH = tileSize[shape][1] * editor.graphicsZoom;
+    DrawGrid(dl, min, max, tileW, tileH);
+
+    ImGui::EndChild();
+
+    int atlasWidth = trueWidth / tileW;
+    //int atlasHeight = trueHeight / tileH;
+
+    if (hovering)
+    {
+        int tileX = -1, tileY = -1;
+        GetTileUnderMouse(min, tileW, tileH, tileX, tileY);
+        DrawHoverHighlight(dl, min, tileW, tileH, tileX, tileY);
+        if (ImGui::IsItemClicked())
+        {
+            tileIdx = tileY * atlasWidth + tileX;
+            imgClicked = false;
+        }
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+        {
+            int idx = tileY * atlasWidth + tileX;
+            HandleTileLink(idx, true, linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
+        }
+    }
+
+    bool hoveringImg = false;
+
+    if (editor.image.texture.tex != 0)
+    {
+        ImGui::SameLine();
+
+        ImGui::BeginGroup();
+
+        if (continueCopy)
+            ImGui::BeginDisabled();
+        
+        std::string label = "<< Replace All Tiles    ";
+        if (ImGui::Button(label.c_str(), ImVec2(200, 0)) || continueCopy)
+        {
+
+            static size_t remaining = 0;
+
+            if (!continueCopy)
+                remaining = imgTiles.size();
+
+            size_t chunk = std::min<size_t>(1024, remaining);
+
+            chunk = std::min<size_t>(chunk, tiles.size());
+
+            size_t offset = imgTiles.size() - remaining;
+
+            std::copy(imgTiles.begin() + offset, imgTiles.begin() + offset + chunk, tiles.begin());
+
+            for (size_t i = 0; i < chunk; ++i)
+            {
+                tiles[i].romAddress = range.start + i * formatSize[tileDisplay];
+                saveTileToROM(tiles[i], editor.rom, is2bpp);
+            }
+
+            remaining -= chunk;
+
+            if (remaining == 0)
+                continueCopy = false;
+            else
+            {
+                continueCopy = true;
+                range.start += chunk;
+                if (range.start > editor.rom.size() - range_max)
+                {
+                    range.start = editor.rom.size() - range_max;
+                    continueCopy = false;
+                }
+            }
+            rebuild = true;
+        }
+        label = "<< Replace Linked Tiles ";
+        if (ImGui::Button(label.c_str(), ImVec2(200, 0)))
+        {
+            for (int A = 0; A < 1024; ++A)
+            {
+                int B = linkFromTile[A];
+                if (B < 0) continue;
+                if (B >= static_cast<int>(imgTiles.size())) continue;
+                tiles[A].pixels = imgTiles[B].pixels;
+                saveTileToROM(tiles[A], editor.rom, is2bpp);
+                rebuild = true;
+            }
+            if(rebuild)
+                ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
+        }
+
+        if (continueCopy)
+            ImGui::EndDisabled();
+        
+        if (is2bpp)
+            label = "<< Replace Sub-Palette " + std::to_string(subPaletteIndex);
+        else
+            label = "<< Replace Palette " + std::to_string(paletteIndex) + "   ";
+        if (ImGui::Button(label.c_str(), ImVec2(200, 0)))
+        {
+            if (paletteIndex < 2)
+                editor.paletteType = PT_Layer3;
+            else if (paletteIndex < 6 || paletteIndex > 7)
+                editor.paletteType = PT_Normal;
+            else
+                editor.paletteType = PT_Layer2;
+            if (is2bpp)
+            {
+                Palette pal = editor.aniPalettes[paletteIndex];
+                int base = subPaletteIndex * 4;
+                for (int i = 0; i < 4; ++i)
+                    pal[base + i] = editor.image.pal[base + i];
+                writeSNESPaletteToROM(paletteIndex, pal, level);
+            }
+            else
+            {
+                if (editor.mode)
+                    writeSNESPaletteToROM(paletteIndex, editor.image.pal, level);
+                else
+                    writeNESPaletteToROM(paletteIndex, editor.image.pal, level);
+            }
+        }
+
+        ImGui::EndGroup();
+
+        ImGui::SameLine();
+        int trueW = editor.image.texture.width * editor.graphicsZoom;
+        int trueH = editor.image.texture.height * editor.graphicsZoom;
+        ImGui::BeginChild("IndexedImage", ImVec2(trueW, trueH), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        DrawNearestImage(dl, editor.image.texture, ImVec2(trueW, trueH), ImVec2(0, 0), ImVec2(1, 1));
+        ImDrawList* dl2 = ImGui::GetWindowDrawList();
+        ImVec2 imin = ImGui::GetItemRectMin();
+        ImVec2 imax = ImGui::GetItemRectMax();
+
+        hoveringImg = ImGui::IsItemHovered();
+        DrawGrid(dl2, imin, imax, tileW, tileH);
+        int atlasW = trueW / tileW;
+
+        if (hoveringImg)
+        {
+            int tileX = -1, tileY = -1;
+            GetTileUnderMouse(imin, tileW, tileH, tileX, tileY);
+            DrawHoverHighlight(dl2, imin, tileW, tileH, tileX, tileY);
+            if (ImGui::IsItemClicked())
+            {
+                tileIdx = tileY * atlasW + tileX;
+                imgClicked = true;
+            }
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+            {
+                int idx = tileY * atlasW + tileX;
+                HandleTileLink(idx, false, linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
+            }
+        }
+
+        if (linkingTile != -1)
+        {
+            if (!linkingPRG)
+            {
+                int x = linkingTile % atlasW;
+                int y = linkingTile / atlasW;
+
+                DrawSelectedOutline(dl2, imin, tileW, tileH, x, y, IM_COL32(255, 255, 255, 128), false);
+            }
+            else
+            {
+                int x = linkingTile % atlasWidth;
+                int y = linkingTile / atlasWidth;
+
+                DrawSelectedOutline(dl, min, tileW, tileH, x, y, IM_COL32(255, 255, 255, 128), false);
+            }
+        }
+
+        for (int A = 0; A < 1024; ++A)
+        {
+            if (linkFromTile[A] != -1)
+            {
+                int ax = A % atlasWidth;
+                int ay = A / atlasWidth;
+                ImU32 color = ColorFromIndex(A);
+                DrawSelectedOutline(dl, min, tileW, tileH, ax, ay, color, false);
+                
+                ax = linkFromTile[A] % atlasW;
+                ay = linkFromTile[A] / atlasW;
+                DrawSelectedOutline(dl2, imin, tileW, tileH, ax, ay, color, false);
+            }
+        }
+
+        if (imgClicked)
+        {
+            min = imin;
+            atlasWidth = atlasW;
+            trueWidth = trueW;
+            trueHeight = trueH;
+            dl = dl2;
+        }
+        ImGui::EndChild();
+    }
+    ImGui::SameLine();
+
+    if (tileIdx >= 0)
+    {
+        //dl = ImGui::GetWindowDrawList();
+        static int selectedColor = 0;
+        int selX = tileIdx % atlasWidth;
+        int selY = tileIdx / atlasWidth;
+        DrawSelectedOutline(dl, min, tileW, tileH, selX, selY);
+        Palette pal;
+        int psize = 4;
+        if (imgPal)
+        {
+            pal = editor.image.pal;
+            if (!is2bpp)
+                psize = pal.size();
+        }
+        else
+        {
+            if (is2bpp)
+            {
+                pal = editor.subPalettes[subPaletteIndex];
+            }
+            else
+            {
+                pal = editor.aniPalettes[paletteIndex];
+                psize = pal.size();
+            }
+        }
+        
+        float scale = editor.graphicsZoom;
+        if (shape == 2)
+            scale *= 4;
+        else
+            scale *= 8;
+        TileEditResult result = DrawTileEdit((imgClicked ? editor.image.texture : tex), selX, selY, tileW, tileH, scale, pal, psize, selectedColor, trueWidth, trueHeight);
+
+        if (result.clicked)
+        {
+            int tempIdx = tileIdx;
+
+            int blockX = result.px / 8;
+            int blockY = result.py / 8;
+
+            if (shape == 1)
+                tempIdx += blockY;
+            else if (shape == 2)
+                tempIdx += blockX + blockY * 2;
+
+            int localX = result.px % 8;
+            int localY = result.py % 8;
+            std::vector<Tile>* ts = hoveringImg ? &imgTiles : &tiles;
+            Tile& t = ts->at(tempIdx);
+            t.pixels[localY * 8 + localX] = selectedColor;
+
+            saveTileToROM(t, editor.rom, is2bpp);
+            rebuild = true;
+        }
+    }
+
+    ImGui::End();
+}
+
 void App::drawEditMode()
 {
     int tileSize = 8;
@@ -2264,10 +3011,9 @@ void App::drawEditMode()
 
     int atlasWidth = trueWidth / trueSize;
     int atlasHeight = trueHeight / trueSize;
-
-    int tileX, tileY;
-    GetTileUnderMouse(min, trueSize, tileX, tileY);
-
+    int tileX = -1, tileY = -1;
+    GetTileUnderMouse(min, trueSize, trueSize, tileX, tileY);
+ 
     if (editor.editMode == EM_Collision)
     {
         for (int y = 0; y < atlasHeight; ++y)
@@ -2369,7 +3115,7 @@ void App::drawEditMode()
         }
     }
 
-    DrawGrid(dl, min, max, trueSize);
+    DrawGrid(dl, min, max, trueSize, trueSize);
 
     if (editor.editMode == EM_Metatiles)
     {
@@ -2402,6 +3148,8 @@ void App::drawTileView()
 
     if (editor.rebuildTileset || editor.tileset.tex == 0)
     {
+        editor.rebuildTileset = false;
+
         if (editor.tileset.tex != 0)
             glDeleteTextures(1, &editor.tileset.tex);
 
@@ -2433,11 +3181,9 @@ void App::drawTileView()
                 scale = 1.0f;
                 uint8_t offset = editor.mode == 0 ? 0 : 2;
                 renderMetaTileMapToRGBA(editor.levelMetaTiles, 16, editor.levelTiles, editor.aniPalettes, offset, bgColor, outPixels, editor.tileset.width, editor.tileset.height);
-                editor.rebuildTileset = false;
                 break;
             }
         }
-        
         uploadTilemapTextureRGBA(outPixels, editor.tileset);
     }
 
@@ -2458,52 +3204,31 @@ void App::drawTileView()
     int atlasWidth = trueWidth / trueSize;
     int atlasHeight = trueHeight / trueSize;
 
-    int tileX, tileY;
-    GetTileUnderMouse(min, trueSize, tileX, tileY);
-
     bool hovering = ImGui::IsItemHovered();
 
     if (hovering)
-        DrawHoverHighlight(dl, min, trueSize, tileX, tileY);
-
-    if (ImGui::IsItemClicked())
-        SelectTileFromClick(tileX, tileY, atlasWidth);
+    {
+        int tileX = -1, tileY = -1;
+        GetTileUnderMouse(min, trueSize, trueSize, tileX, tileY);
+        DrawHoverHighlight(dl, min, trueSize, trueSize, tileX, tileY);
+        if (ImGui::IsItemClicked())
+            SelectTileFromClick(tileX, tileY, atlasWidth);
+    }
 
     if (editor.selectedTile >= 0)
     {
         int selX = editor.selectedTile % atlasWidth;
         int selY = editor.selectedTile / atlasWidth;
-        DrawSelectedOutline(dl, min, trueSize, selX, selY);
+        DrawSelectedOutline(dl, min, trueSize, trueSize, selX, selY);
 
         if (tileSize < 32)
         {
-            float u0 = (selX * trueSize) / float(trueWidth);
-            float v0 = (selY * trueSize) / float(trueHeight);
-            float u1 = ((selX + 1) * trueSize) / float(trueWidth);
-            float v1 = ((selY + 1) * trueSize) / float(trueHeight);
-
-            scale = 16.0f * editor.tilesetZoom;
-            ImVec2 bigSize(tileSize * scale, tileSize * scale);
-
-            ImGui::SameLine();
-            ImGui::BeginGroup();
-            ImGui::Text("Selected Tile");
-
-            ImDrawList* dl2 = ImGui::GetWindowDrawList();
-
-            DrawNearestImage(dl, editor.tileset, bigSize, ImVec2(u0, v0), ImVec2(u1,v1));
-
-            ImVec2 bigMin = ImGui::GetItemRectMin();
-            ImVec2 bigMax = ImGui::GetItemRectMax();
-
-            DrawGrid(dl2, bigMin, bigMax, scale);
-
             Palette pal;
-            size_t psize = 4;
-            if (editor.editMode == EM_Layer3)
+            int psize = 4;
+            bool is2bpp = editor.editMode == EM_Layer3;
+            if (is2bpp)
             {
                 pal = editor.subPalettes[editor.subPaletteIndex];
-                psize = 4;
             }
             else
             {
@@ -2511,60 +3236,22 @@ void App::drawTileView()
                 psize = pal.size();
             }
 
-            for (int i = 0; i < psize; ++i)
+            scale = 8.0f * editor.tilesetZoom;
+            if (tileSize == 8)
+                scale *= 2;
+            TileEditResult result = DrawTileEdit(editor.tileset, selX, selY, trueSize, trueSize, scale, pal, psize, editor.selectedColor, trueWidth, trueHeight);
+
+            if (result.clicked)
             {
-                ImVec4 c(
-                    pal[i].r / 255.f,
-                    pal[i].g / 255.f,
-                    pal[i].b / 255.f,
-                    1.f
-                );
-
-                std::string id = "color_" + std::to_string(i);
-
-                if (ImGui::ColorButton(id.c_str(), c, 0, ImVec2(20, 20)))
-                    editor.selectedColor = i;
-
-                if (editor.selectedColor == i)
-                {
-                    ImDrawList* dl3 = ImGui::GetWindowDrawList();
-                    ImVec2 p0 = ImGui::GetItemRectMin();
-                    ImVec2 p1 = ImGui::GetItemRectMax();
-
-                    dl3->AddRect(
-                        p0, p1,
-                        IM_COL32(255, 255, 0, 255),
-                        0.0f,
-                        0,
-                        2.0f
-                    );
-                }
-
-                if ((i % 8) != 7)
-                    ImGui::SameLine();
-            }
-            ImGui::NewLine();
-
-            ImVec2 mouse = ImGui::GetMousePos();
-            bool inside =
-                mouse.x >= bigMin.x && mouse.x < bigMax.x &&
-                mouse.y >= bigMin.y && mouse.y < bigMax.y;
-
-            if (inside && ImGui::IsMouseDown(ImGuiMouseButton_Left))
-            {
-                int px = int((mouse.x - bigMin.x) / scale);
-                int py = int((mouse.y - bigMin.y) / scale);
                 if (tileSize == 16)
-                    PaintMacroTilePixel(editor.selectedTile, px, py);
+                    PaintMacroTilePixel(editor.selectedTile, result.px, result.py);
                 else
-                    PaintTilePixel(editor.selectedTile, px, py);
+                    PaintTilePixel(editor.selectedTile, result.px, result.py, is2bpp);
             }
-
-            ImGui::EndGroup();
         }
     }
 
-    DrawGrid(dl, min, max, trueSize);
+    DrawGrid(dl, min, max, trueSize, trueSize);
 }
 
 void App::drawLevelView()
@@ -2603,11 +3290,7 @@ void App::drawLevelView()
     const std::string& levelName = names[editor.selectedLevel];
     const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
 
-    /*ImGui::Text("Level: %s", levelName.c_str());
-    ImGui::Text("Map address: %06X", level.map);
-    ImGui::Text("Scroll: %06X", level.scroll);*/
-
-    const char* cbNames[] = { "Level Editor", "Object Editor", "Checkpoint Editor" };
+    const char* cbNames[] = { "Layout Editor", "Object Editor", "Checkpoint Editor" };
     if (ImGui::BeginCombo("Editor Type", cbNames[editor.lvlViewMode]))
     {
         for (int i = 0; i < 3; ++i)
@@ -2619,8 +3302,6 @@ void App::drawLevelView()
                 editor.rebuildView = true;
                 editor.rebuildBackgrounds = true;
             }
-            if (selected)
-                ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
@@ -2781,16 +3462,16 @@ void App::drawLevelView()
 
     if (editor.lvlViewMode == LVM_Level)
     {
-        DrawGrid(dl, min, max, ts);
+        DrawGrid(dl, min, max, ts, ts);
 
         if (editor.inLevelRegion)
         {
-            int tileX, tileY;
-            GetTileUnderMouse(min, ts, tileX, tileY);
-
+            int tileX = -1, tileY = -1;
+            GetTileUnderMouse(min, ts, ts, tileX, tileY);
+            
             if (hovering)
             {
-                DrawHoverHighlight(dl, min, ts, tileX, tileY);
+                DrawHoverHighlight(dl, min, ts, ts, tileX, tileY);
                 if (editor.selectedTile >= 0)
                 {
                     int atlasW = editor.tileset.width / s;
@@ -3198,7 +3879,7 @@ void App::drawLevelView()
                     if (ImGui::InputText(label.c_str(), bufBack, sizeof(bufBack),
                         ImGuiInputTextFlags_CharsHexadecimal))
                     {
-                        c->map_back_addr = std::clamp((int)strtol(bufBack, nullptr, 16), 0, 0xFFFF);
+                        c->map_back_addr = std::clamp(static_cast<int>(strtol(bufBack, nullptr, 16)), 0, 0xFFFF);
                     }
                 }
 
@@ -3210,7 +3891,7 @@ void App::drawLevelView()
                     if (ImGui::InputText(label.c_str(), bufForward, sizeof(bufForward),
                         ImGuiInputTextFlags_CharsHexadecimal))
                     {
-                        c->map_forward_addr = std::clamp((int)strtol(bufForward, nullptr, 16), 0, 0xFFFF);
+                        c->map_forward_addr = std::clamp(static_cast<int>(strtol(bufForward, nullptr, 16)), 0, 0xFFFF);
                     }
                 }
 
@@ -3315,13 +3996,15 @@ void App::drawLevelView()
             {
                 editor.currentScreen = c->screen;
             }
-
+            ImGui::Text("Layer 2");
+            ImGui::BulletText("X: %u", bg->bg2_x);
+            ImGui::BulletText("Y: %u", bg->bg2_y);
+            ImGui::BulletText("Screen ID: %u", bg->bg2_screenId);
+            ImGui::Text("Layer 3");
+            ImGui::BulletText("X: %u", bg->bg3_x);
+            ImGui::BulletText("Y: %u", bg->bg3_y);
             ImGui::BulletText("Screen ID: %u", bg->scrollId);
-            ImGui::BulletText("Layer 2 X: %u", bg->bg2_x);
-            ImGui::BulletText("Layer 2 Y: %u", bg->bg2_y);
-            ImGui::BulletText("Layer 3 X: %u", bg->bg3_x);
-            ImGui::BulletText("Layer 3 Y: %u", bg->bg3_y);
-            ImGui::BulletText("Layer 2 Screen ID", bg->bg2_screenId);
+            
             ImGui::Separator();
         }
         ImGui::End();
@@ -3379,9 +4062,6 @@ void App::drawScrollData()
                 screens = i;
                 scrollByte = (scrollByte & 0xF0) | ((screens - 1) & 0x0F);
             }
-
-            if (selected)
-                ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
@@ -3498,9 +4178,6 @@ void App::drawBGScrollData()
                 else
                     editor.scrollLayer2Vertical = false;
             }
-
-            if (selected)
-                ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
@@ -3530,9 +4207,6 @@ void App::drawBGScrollData()
                 else
                     editor.scrollLayer2Vertical = false;
             }
-
-            if (selected)
-                ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }

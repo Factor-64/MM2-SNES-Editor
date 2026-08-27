@@ -37,6 +37,13 @@ void drawMenu(MenuState& state, const bool romLoaded, const bool ready, const bo
 
         if (romLoaded && ready)
         {
+            if (ImGui::BeginMenu("Tools"))
+            {
+                if (ImGui::MenuItem("Graphics Viewer"))
+                    state = MS_OpenGraphics;
+                ImGui::EndMenu();
+            }
+
             if (ImGui::BeginMenu("Export Level Data", finished))
             {
                 if (ImGui::MenuItem("Export Layer 1+2+3 Graphics Data"))
