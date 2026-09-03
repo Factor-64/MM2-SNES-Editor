@@ -37,26 +37,20 @@ DataChanged saveObjectData(std::vector<uint8_t>& rom, uint32_t screenAddr, uint3
 	mem.newData.push_back(obj.screen);
 	mem.oldData.push_back(rom[screenAddr]);
 	data.deltas.push_back(mem);
-	mem.newData.clear();
-	mem.oldData.clear();
 
 	mem.address = xAddr;
-	mem.newData.push_back(obj.x);
-	mem.oldData.push_back(obj.y);
+	mem.newData[0] = (obj.x);
+	mem.oldData[0] = (obj.y);
 	data.deltas.push_back(mem);
-	mem.newData.clear();
-	mem.oldData.clear();
 
 	mem.address = yAddr;
-	mem.newData.push_back(obj.y);
-	mem.oldData.push_back(rom[yAddr]);
+	mem.newData[0] = (obj.y);
+	mem.oldData[0] = (rom[yAddr]);
 	data.deltas.push_back(mem);
-	mem.newData.clear();
-	mem.oldData.clear();
 
 	mem.address = typeAddr;
-	mem.newData.push_back(obj.type);
-	mem.oldData.push_back(rom[typeAddr]);
+	mem.newData[0] = (obj.type);
+	mem.oldData[0] = (rom[typeAddr]);
 	data.deltas.push_back(mem);
 	return data;
 }

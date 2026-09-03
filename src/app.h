@@ -205,7 +205,6 @@ private:
     void drawHeaderWindow();
     void drawScrollData();
     void drawBGScrollData();
-    //void saveROMData();
     void drawLevelView();
     void drawTileView();
     void SelectTileFromClick(int tileX, int tileY, int atlasWidth);

@@ -35,7 +35,6 @@ std::vector<uint8_t> remapColumnMajorScreensHorizontally(const std::vector<uint8
 int metaWidthFromLevelData(const std::vector<uint8_t>& levelData);
 
 MemoryDelta saveLevelData(std::vector<uint8_t>& rom, uint32_t addr, int screenIndex, int row, int col, uint8_t value);
-//void saveScrollData(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<uint8_t>& data);
 
 std::array<ScrollEnable, 64> loadBackgroundScrollData(const std::vector<uint8_t>& rom, uint32_t addr);
 MemoryDelta saveBackgroundScrollData(std::vector<uint8_t>& rom, uint32_t addr, const ScrollEnable& data);

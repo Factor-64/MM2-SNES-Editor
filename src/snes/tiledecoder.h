@@ -41,7 +41,6 @@ struct MetaTile {
 };
 
 std::vector<MetaTile> makeMetaTiles(const std::vector<MetaTileData>& data, const std::vector<MacroTile>& macroTiles);
-//void saveMetaTilesToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, uint32_t collision, const std::vector<MetaTile>& levelMetaTiles);
 DataChanged saveMetaTileToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, uint32_t collision, MetaTile& mt);
 std::vector<Tile> decodeTileRanges(const std::vector<Range>& ranges, const std::vector<uint8_t>& rom, const int tileSize);
 std::vector<Tile> decodeTileRange(const Range& range, const std::vector<uint8_t>& rom, const int tileSize);
@@ -50,7 +49,6 @@ std::vector<MetaTileData> decodeMetaTile32NES(const std::vector<uint8_t>& rom, u
 std::vector<MetaTileData> decodeMetaTile32SNES(const std::vector<uint8_t>& rom, uint32_t addr, uint32_t collision, int count);
 void loadMetaTilePalettes(std::vector<MetaTileData>& data, const std::vector<uint8_t>& rom, uint32_t addr, int count);
 
-//void saveMetaTilePalettes(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<MetaTileData>& data);
 MemoryDelta saveTileToROM(Tile& t, std::vector<uint8_t>& rom, const bool is2bpp = false);
 std::vector<BGTileData> loadBackgroundTileData(std::vector<uint8_t>& rom, uint32_t addr, int count);
 MemoryDelta saveBackgroundTileData(std::vector<uint8_t>& rom, uint32_t addr, const BGTileData& td);

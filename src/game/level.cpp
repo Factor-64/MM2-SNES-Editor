@@ -79,12 +79,6 @@ std::vector<uint8_t> remapBackToColumnMajor(const std::vector<uint8_t>& data)
     return out;
 }
 
-/*void saveLevelData(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<uint8_t>& newData)
-{
-    auto data = remapBackToColumnMajor(newData);
-    std::copy(data.begin(), data.end(), rom.begin() + addr);
-}*/
-
 MemoryDelta saveLevelData(std::vector<uint8_t>& rom, uint32_t addr, int screenIndex, int row, int col, uint8_t value)
 {
     MemoryDelta m;
@@ -99,12 +93,6 @@ MemoryDelta saveLevelData(std::vector<uint8_t>& rom, uint32_t addr, int screenIn
     m.oldData.push_back(rom[romOffset]);
     return m;
 }
-
-
-/*void saveScrollData(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<uint8_t>& data)
-{
-    std::copy(data.begin(), data.end(), rom.begin() + addr);
-}*/
 
 int metaWidthFromLevelData(const std::vector<uint8_t>& levelData)
 {
@@ -159,19 +147,6 @@ std::array<std::array<BGSpeedData, 4>, 32> loadBGScrollSpeeds(const std::vector<
     return out;
 }
 
-/*
-MemoryDelta saveBackgroundScrollData(std::vector<uint8_t>& rom, uint32_t addr, const std::array<ScrollEnable, 64>& data)
-{
-    for (size_t i = 0; i < data.size(); ++i)
-    {
-        uint8_t b = 0;
-        if (data[i].bg2) b |= 0x10;
-        if (data[i].bg3) b |= 0x01;
-
-        rom[addr + i] = b;
-    }
-}*/
-
 MemoryDelta saveBackgroundScrollData(std::vector<uint8_t>& rom, uint32_t addr, const ScrollEnable& data)
 {
     uint8_t b = 0;
@@ -185,15 +160,6 @@ MemoryDelta saveBackgroundScrollData(std::vector<uint8_t>& rom, uint32_t addr, c
     return mem;
 }
 
-/*void saveBGTilemapMirror(std::vector<uint8_t>& rom, uint32_t addr, const std::array<BGTilemapMirror, 64>& data)
-{
-    for (size_t i = 0; i < data.size(); ++i)
-    {
-        rom[addr + i * 2 + 0] = data[i].bg2_mode;
-        rom[addr + i * 2 + 1] = data[i].bg3_mode;
-    }
-}*/
-
 MemoryDelta saveBGTilemapMirror(std::vector<uint8_t>& rom, uint32_t addr, const BGTilemapMirror& data)
 {
     MemoryDelta mem;
@@ -204,22 +170,6 @@ MemoryDelta saveBGTilemapMirror(std::vector<uint8_t>& rom, uint32_t addr, const 
     mem.oldData.push_back(rom[addr + 1]);
     return mem;
 }
-
-/*void saveBGScrollSpeeds(std::vector<uint8_t>& rom, uint32_t addr, const std::array<std::array<BGSpeedData, 4>, 32>& data)
-{
-    for (size_t i = 0; i < data.size(); ++i)
-    {
-        uint32_t base = addr + i * 4;
-
-        for (size_t j = 0; j < 4; ++j)
-        {
-            const BGSpeedData& s = data[i][j];
-
-            uint8_t b = (s.frames << 4) | (s.scanlines & 0x0F);
-            rom[base + j] = b;
-        }
-    }
-}*/
 
 MemoryDelta saveBGScrollSpeeds(std::vector<uint8_t>& rom, uint32_t addr, const std::array<BGSpeedData, 4>& data)
 {

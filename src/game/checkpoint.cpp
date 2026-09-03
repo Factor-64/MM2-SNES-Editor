@@ -27,27 +27,6 @@ Checkpoints loadCheckpoints(std::vector<uint8_t>& rom, uint32_t addr)
     return c;
 }
 
-/*void saveCheckpoints(std::vector<uint8_t>& rom, uint32_t addr, const Checkpoints& c)
-{
-    for (int i = 0; i < 3; ++i)
-    {
-        rom[addr + i] = c[i].y;
-        rom[addr + 0x06 + i] = c[i].screen;
-        rom[addr + 0x0C + i] = c[i].enemy_index;
-        rom[addr + 0x12 + i] = c[i].item_index;
-
-        rom[addr + 0x18 + i] = (c[i].map_back_addr >> 8) & 0xFF;  // high byte
-        rom[addr + 0x1E + i] = c[i].map_back_addr & 0xFF;  // low byte
-
-        rom[addr + 0x24 + i] = (c[i].map_forward_addr >> 8) & 0xFF;
-        rom[addr + 0x2A + i] = c[i].map_forward_addr & 0xFF;
-
-        rom[addr + 0x30 + i] = c[i].scroll;
-        rom[addr + 0x36 + i] = c[i].left_screen;
-        rom[addr + 0x3C + i] = c[i].right_screen;
-    }
-}*/
-
 DataChanged saveCheckpoint(std::vector<uint8_t>& rom, uint32_t addr, const Checkpoint& c)
 {
     DataChanged d;
@@ -56,85 +35,65 @@ DataChanged saveCheckpoint(std::vector<uint8_t>& rom, uint32_t addr, const Check
     mem.newData.push_back(c.y);
     mem.oldData.push_back(rom[addr]);
     d.deltas.push_back(mem);
-    mem.newData.clear();
-    mem.oldData.clear();
     addr += 0x06;
 
     mem.address = addr;
-    mem.newData.push_back(c.screen);
-    mem.oldData.push_back(rom[addr]);
+    mem.newData[0] = (c.screen);
+    mem.oldData[0] = (rom[addr]);
     d.deltas.push_back(mem);
-    mem.newData.clear();
-    mem.oldData.clear();
     addr += 0x06;
 
     mem.address = addr;
-    mem.newData.push_back(c.enemy_index);
-    mem.oldData.push_back(rom[addr]);
+    mem.newData[0] = (c.enemy_index);
+    mem.oldData[0] = (rom[addr]);
     d.deltas.push_back(mem);
-    mem.newData.clear();
-    mem.oldData.clear();
     addr += 0x06;
 
     mem.address = addr;
-    mem.newData.push_back(c.item_index);
-    mem.oldData.push_back(rom[addr]);
+    mem.newData[0] = (c.item_index);
+    mem.oldData[0] = (rom[addr]);
     d.deltas.push_back(mem);
-    mem.newData.clear();
-    mem.oldData.clear();
     addr += 0x06;
 
     mem.address = addr;
-    mem.newData.push_back((c.map_back_addr >> 8) & 0xFF);
-    mem.oldData.push_back(rom[addr]);
+    mem.newData[0] = ((c.map_back_addr >> 8) & 0xFF);
+    mem.oldData[0] = (rom[addr]);
     d.deltas.push_back(mem);
-    mem.newData.clear();
-    mem.oldData.clear();
     addr += 0x06;
 
     mem.address = addr;
-    mem.newData.push_back(c.map_back_addr & 0xFF);
-    mem.oldData.push_back(rom[addr]);
+    mem.newData[0] = (c.map_back_addr & 0xFF);
+    mem.oldData[0] = (rom[addr]);
     d.deltas.push_back(mem);
-    mem.newData.clear();
-    mem.oldData.clear();
     addr += 0x06;
 
     mem.address = addr;
-    mem.newData.push_back((c.map_forward_addr >> 8) & 0xFF);
-    mem.oldData.push_back(rom[addr]);
+    mem.newData[0] = ((c.map_forward_addr >> 8) & 0xFF);
+    mem.oldData[0] = (rom[addr]);
     d.deltas.push_back(mem);
-    mem.newData.clear();
-    mem.oldData.clear();
     addr += 0x06;
 
     mem.address = addr;
-    mem.newData.push_back(c.map_forward_addr & 0xFF);
-    mem.oldData.push_back(rom[addr]);
+    mem.newData[0] = (c.map_forward_addr & 0xFF);
+    mem.oldData[0] = (rom[addr]);
     d.deltas.push_back(mem);
-    mem.newData.clear();
-    mem.oldData.clear();
     addr += 0x06;
 
     mem.address = addr;
-    mem.newData.push_back(c.scroll);
-    mem.oldData.push_back(rom[addr]);
+    mem.newData[0] = (c.scroll);
+    mem.oldData[0] = (rom[addr]);
     d.deltas.push_back(mem);
-    mem.newData.clear();
-    mem.oldData.clear();
     addr += 0x06;
 
     mem.address = addr;
-    mem.newData.push_back(c.left_screen);
-    mem.oldData.push_back(rom[addr]);
+    mem.newData[0] = (c.left_screen);
+    mem.oldData[0] = (rom[addr]);
     d.deltas.push_back(mem);
-    mem.newData.clear();
-    mem.oldData.clear();
     addr += 0x06;
 
     mem.address = addr;
-    mem.newData.push_back(c.right_screen);
-    mem.oldData.push_back(rom[addr]);
+    mem.newData[0] = (c.right_screen);
+    mem.oldData[0] = (rom[addr]);
     d.deltas.push_back(mem);
     return d;
 }
@@ -156,25 +115,6 @@ std::array<BGPositionData, 3> loadBGPositionData(const std::vector<uint8_t>& rom
     }
     return data;
 }
-
-/*void saveBGPositionData(std::vector<uint8_t>& rom, uint32_t addr, const BGPositionData& data)
-{
-    rom[addr + 0] = data.scrollId;
-
-    rom[addr + 1] = data.bg2_x & 0xFF;
-    rom[addr + 2] = (data.bg2_x >> 8) & 0xFF;
-
-    rom[addr + 3] = data.bg2_y & 0xFF;
-    rom[addr + 4] = (data.bg2_y >> 8) & 0xFF;
-
-    rom[addr + 5] = data.bg3_x & 0xFF;
-    rom[addr + 6] = (data.bg3_x >> 8) & 0xFF;
-
-    rom[addr + 7] = data.bg3_y & 0xFF;
-    rom[addr + 8] = (data.bg3_y >> 8) & 0xFF;
-
-    rom[addr + 9] = data.bg2_screenId;
-}*/
 
 MemoryDelta saveBGPositionData(std::vector<uint8_t>& rom, uint32_t addr, const BGPositionData& data)
 {
