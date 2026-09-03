@@ -25,8 +25,6 @@ TileMap makeTileMap(const std::vector<Tile>& atlas, int mapWidth, uint8_t shape)
 
         TileRef& ref = map.at(x, y);
         ref.index = static_cast<uint16_t>(i * tilesPerMeta);
-        ref.flipX = false;
-        ref.flipY = false;
     }
 
     return map;
@@ -171,56 +169,6 @@ std::vector<MacroTile> buildMacroTiles(const TileMap& map)
     }
 
     return out;
-}
-
-std::vector<MetaTile> makeMetaTiles(const std::vector<MetaTileData>& data, const std::vector<MacroTile>& macroTiles)
-{
-    std::vector<MetaTile> out;
-    out.resize(data.size());
-    for (size_t i = 0; i < data.size(); ++i)
-    {
-        for (size_t j = 0; j < data[i].tileIndexes.size(); ++j)
-        {
-            int idx = data[i].tileIndexes[j];
-            if (idx >= macroTiles.size()) continue;
-            out[i].tiles[j] = macroTiles[data[i].tileIndexes[j]];
-            out[i].macroIndex[j] = idx;
-            out[i].palettes[j] = data[i].palettes[j];
-            out[i].collision[j] = data[i].collision[j];
-        }
-    }
-    return out;
-}
-
-MetaTileData convertToMetaTileData(const MetaTile& mt)
-{
-    MetaTileData out;
-
-    // TL, TR, BL, BR
-    out.tileIndexes[0] = mt.macroIndex[0];
-    out.tileIndexes[1] = mt.macroIndex[1];
-    out.tileIndexes[2] = mt.macroIndex[2];
-    out.tileIndexes[3] = mt.macroIndex[3];
-
-    out.palettes = mt.palettes;
-    out.collision = mt.collision;
-
-    return out;
-}
-
-void saveMetaTilesToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, uint32_t collision, const std::vector<MetaTile>& levelMetaTiles)
-{
-    std::vector<MetaTileData> encoded;
-
-    encoded.reserve(levelMetaTiles.size());
-    for (const MetaTile& mt : levelMetaTiles)
-        encoded.push_back(convertToMetaTileData(mt));
-
-    if (collision != 0)
-        encodeMetaTile32SNES(rom, addr, collision, encoded);
-    else
-        encodeMetaTile32NES(rom, addr, encoded);
-    saveMetaTilePalettes(rom, paladdr, encoded);
 }
 
 void blitMacroTileToRGBA(

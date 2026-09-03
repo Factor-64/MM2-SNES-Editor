@@ -116,7 +116,7 @@ void encodeSNES4bppTile(uint8_t* out, const Tile& t)
     }
 }
 
-void saveTileToROM(Tile& t, std::vector<uint8_t>& rom, const bool is2bpp)
+MemoryDelta saveTileToROM(Tile& t, std::vector<uint8_t>& rom, const bool is2bpp)
 {
     const size_t size = is2bpp ? 16 : 32;
 
@@ -126,7 +126,11 @@ void saveTileToROM(Tile& t, std::vector<uint8_t>& rom, const bool is2bpp)
     else
         encodeSNES4bppTile(encoded.data(), t);
 
-    std::copy(encoded.begin(), encoded.begin() + size, rom.begin() + t.romAddress);
+    MemoryDelta mem;
+    mem.address = t.romAddress;
+    mem.newData.insert(mem.newData.end(), encoded.begin(), encoded.begin() + size);
+    mem.oldData.insert(mem.oldData.end(), rom.begin() + t.romAddress, rom.begin() + t.romAddress + size);
+    return mem;
 }
 
 
@@ -199,27 +203,6 @@ void loadMetaTilePalettes(std::vector<MetaTileData>& data, const std::vector<uin
     }
 }
 
-void saveMetaTilePalettes(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<MetaTileData>& data)
-{
-    for (size_t m = 0; m < data.size(); ++m)
-    {
-        const auto& palettes = data[m].palettes;
-
-        uint8_t p0 = palettes[0] & 0x03; // TL
-        uint8_t p1 = palettes[1] & 0x03; // TR
-        uint8_t p2 = palettes[2] & 0x03; // BL
-        uint8_t p3 = palettes[3] & 0x03; // BR
-
-        uint8_t b =
-            (p0 << 0) |
-            (p1 << 2) |
-            (p2 << 4) |
-            (p3 << 6);
-
-        rom[addr + m] = b;
-    }
-}
-
 std::vector<MetaTileData> decodeMetaTile32NES(const std::vector<uint8_t>& rom, uint32_t addr, int count)
 {
     std::vector<MetaTileData> out;
@@ -283,42 +266,6 @@ std::vector<MetaTileData> decodeMetaTile32SNES(const std::vector<uint8_t>& rom, 
     return out;
 }
 
-void encodeMetaTile32NES(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<MetaTileData>& metaTiles)
-{
-    for (size_t m = 0; m < metaTiles.size(); ++m)
-    {
-        const MetaTileData& mt = metaTiles[m];
-
-        uint8_t b0 = ((mt.collision[0] & 0x03) << 6) | (mt.tileIndexes[0] & 0x3F); // TL
-        uint8_t b1 = ((mt.collision[2] & 0x03) << 6) | (mt.tileIndexes[2] & 0x3F); // BL
-        uint8_t b2 = ((mt.collision[1] & 0x03) << 6) | (mt.tileIndexes[1] & 0x3F); // TR
-        uint8_t b3 = ((mt.collision[3] & 0x03) << 6) | (mt.tileIndexes[3] & 0x3F); // BR
-
-        rom[addr + m * 4 + 0] = b0;
-        rom[addr + m * 4 + 1] = b1;
-        rom[addr + m * 4 + 2] = b2;
-        rom[addr + m * 4 + 3] = b3;
-    }
-}
-
-void encodeMetaTile32SNES(std::vector<uint8_t>& rom, uint32_t addr, uint32_t collision, const std::vector<MetaTileData>& metaTiles)
-{
-    for (size_t i = 0; i < metaTiles.size(); ++i)
-    {
-        size_t m = i * 4;
-        const MetaTileData& mt = metaTiles[i];
-
-        rom[addr + (m + 0)] = mt.tileIndexes[0];
-        rom[addr + (m + 1)] = mt.tileIndexes[2];
-        rom[addr + (m + 2)] = mt.tileIndexes[1];
-        rom[addr + (m + 3)] = mt.tileIndexes[3];
-        rom[collision + (m + 0)] = mt.collision[0];
-        rom[collision + (m + 1)] = mt.collision[2];
-        rom[collision + (m + 2)] = mt.collision[1];
-        rom[collision + (m + 3)] = mt.collision[3];
-    }
-}
-
 std::vector<BGTileData> loadBackgroundTileData(std::vector<uint8_t>& rom, uint32_t addr, int count)
 {
     std::vector<BGTileData> out;
@@ -339,7 +286,7 @@ std::vector<BGTileData> loadBackgroundTileData(std::vector<uint8_t>& rom, uint32
     return out;
 }
 
-void saveBackgroundTileData(std::vector<uint8_t>& rom, uint32_t addr, std::vector<BGTileData> data)
+/*void saveBackgroundTileData(std::vector<uint8_t>& rom, uint32_t addr, std::vector<BGTileData>& data)
 {
     for (int i = 0; i < data.size(); ++i)
     {
@@ -356,4 +303,192 @@ void saveBackgroundTileData(std::vector<uint8_t>& rom, uint32_t addr, std::vecto
 
         rom[addr + i * 2 + 1] = attr;
     }
+}*/
+
+MemoryDelta saveBackgroundTileData(std::vector<uint8_t>& rom, uint32_t addr, const BGTileData& td)
+{
+    MemoryDelta mem;
+    mem.address = addr;
+    mem.oldData.push_back(rom[addr]);
+    mem.oldData.push_back(rom[addr + 1]);
+    mem.newData.push_back(td.tileId);
+    
+
+    uint8_t attr = 0;
+    attr |= (td.vramPage & 0x03);
+    attr |= (td.palette & 0x07) << 2;
+    attr |= td.highPriority ? 0x20 : 0;
+    attr |= td.hFlip ? 0x40 : 0;
+    attr |= td.vFlip ? 0x80 : 0;
+
+    mem.newData.push_back(attr);
+
+    return mem;
+}
+
+MetaTileData convertToMetaTileData(const MetaTile& mt)
+{
+    MetaTileData out;
+
+    // TL, TR, BL, BR
+    out.tileIndexes[0] = mt.macroIndex[0];
+    out.tileIndexes[1] = mt.macroIndex[1];
+    out.tileIndexes[2] = mt.macroIndex[2];
+    out.tileIndexes[3] = mt.macroIndex[3];
+
+    out.palettes = mt.palettes;
+    out.collision = mt.collision;
+
+    return out;
+}
+
+/*void encodeMetaTile32NES(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<MetaTileData>& metaTiles)
+{
+    for (size_t m = 0; m < metaTiles.size(); ++m)
+    {
+        const MetaTileData& mt = metaTiles[m];
+
+        uint8_t b0 = ((mt.collision[0] & 0x03) << 6) | (mt.tileIndexes[0] & 0x3F); // TL
+        uint8_t b1 = ((mt.collision[2] & 0x03) << 6) | (mt.tileIndexes[2] & 0x3F); // BL
+        uint8_t b2 = ((mt.collision[1] & 0x03) << 6) | (mt.tileIndexes[1] & 0x3F); // TR
+        uint8_t b3 = ((mt.collision[3] & 0x03) << 6) | (mt.tileIndexes[3] & 0x3F); // BR
+
+        rom[addr + m * 4 + 0] = b0;
+        rom[addr + m * 4 + 1] = b1;
+        rom[addr + m * 4 + 2] = b2;
+        rom[addr + m * 4 + 3] = b3;
+    }
+}*/
+
+MemoryDelta encodeMetaTile32NES(std::vector<uint8_t>& rom, uint32_t addr, const MetaTileData& mt)
+{
+    std::array<uint8_t, 4> b;
+    b[0] = ((mt.collision[0] & 0x03) << 6) | (mt.tileIndexes[0] & 0x3F); // TL
+    b[1] = ((mt.collision[2] & 0x03) << 6) | (mt.tileIndexes[2] & 0x3F); // BL
+    b[2] = ((mt.collision[1] & 0x03) << 6) | (mt.tileIndexes[1] & 0x3F); // TR
+    b[3] = ((mt.collision[3] & 0x03) << 6) | (mt.tileIndexes[3] & 0x3F); // BR
+
+    MemoryDelta m;
+    m.address = addr;
+    for (int i = 0; i < b.size(); ++i)
+    {
+        m.newData.push_back(b[i]);
+        m.oldData.push_back(rom[addr + i]);
+    }
+    return m;
+}
+
+/*void encodeMetaTile32SNES(std::vector<uint8_t>& rom, uint32_t addr, uint32_t collision, const std::vector<MetaTileData>& metaTiles)
+{
+    for (size_t i = 0; i < metaTiles.size(); ++i)
+    {
+        size_t m = i * 4;
+        const MetaTileData& mt = metaTiles[i];
+
+        rom[addr + (m + 0)] = mt.tileIndexes[0];
+        rom[addr + (m + 1)] = mt.tileIndexes[2];
+        rom[addr + (m + 2)] = mt.tileIndexes[1];
+        rom[addr + (m + 3)] = mt.tileIndexes[3];
+        rom[collision + (m + 0)] = mt.collision[0];
+        rom[collision + (m + 1)] = mt.collision[2];
+        rom[collision + (m + 2)] = mt.collision[1];
+        rom[collision + (m + 3)] = mt.collision[3];
+    }
+}*/
+
+DataChanged encodeMetaTile32SNES(std::vector<uint8_t>& rom, uint32_t addr, uint32_t collision, MetaTileData& mt)
+{
+    DataChanged d;
+    MemoryDelta m;
+    m.address = addr;
+    for (int i = 0; i < mt.tileIndexes.size(); ++i)
+    {
+        m.newData.push_back(mt.tileIndexes[i]);
+        m.oldData.push_back(rom[addr + i]);
+    }
+    d.deltas.push_back(m);
+    m.newData.clear();
+    m.oldData.clear();
+    m.address = collision;
+    for (int i = 0; i < mt.collision.size(); ++i)
+    {
+        m.newData.push_back(mt.collision[i]);
+        m.oldData.push_back(rom[collision + i]);
+    }
+    d.deltas.push_back(m);
+    return d;
+}
+
+/*void saveMetaTilesToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, uint32_t collision, const std::vector<MetaTile>& levelMetaTiles)
+{
+    std::vector<MetaTileData> encoded;
+
+    encoded.reserve(levelMetaTiles.size());
+    for (const MetaTile& mt : levelMetaTiles)
+        encoded.push_back(convertToMetaTileData(mt));
+
+    if (collision != 0)
+        encodeMetaTile32SNES(rom, addr, collision, encoded);
+    else
+        encodeMetaTile32NES(rom, addr, encoded);
+    saveMetaTilePalettes(rom, paladdr, encoded);
+}*/
+
+MemoryDelta saveMetaTilePalette(std::vector<uint8_t>& rom, uint32_t addr, const MetaTileData& data)
+{
+    MemoryDelta m;
+    const auto& palettes = data.palettes;
+
+    uint8_t p0 = palettes[0] & 0x03; // TL
+    uint8_t p1 = palettes[1] & 0x03; // TR
+    uint8_t p2 = palettes[2] & 0x03; // BL
+    uint8_t p3 = palettes[3] & 0x03; // BR
+
+    uint8_t b =
+        (p0 << 0) |
+        (p1 << 2) |
+        (p2 << 4) |
+        (p3 << 6);
+
+    m.address = addr;
+    m.newData.push_back(b);
+    m.oldData.push_back(rom[addr]);
+    return m;
+}
+
+DataChanged saveMetaTileToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, uint32_t collision, MetaTile& mt)
+{
+    DataChanged data;
+    MemoryDelta m;
+    MetaTileData mtd = convertToMetaTileData(mt);
+
+    if (collision != 0)
+        data = encodeMetaTile32SNES(rom, addr, collision, mtd);
+    else
+    {
+        m = encodeMetaTile32NES(rom, addr, mtd);
+        data.deltas.push_back(m);
+    }
+    m = saveMetaTilePalette(rom, paladdr, mtd);
+    data.deltas.push_back(m);
+    return data;
+}
+
+std::vector<MetaTile> makeMetaTiles(const std::vector<MetaTileData>& data, const std::vector<MacroTile>& macroTiles)
+{
+    std::vector<MetaTile> out;
+    out.resize(data.size());
+    for (size_t i = 0; i < data.size(); ++i)
+    {
+        for (size_t j = 0; j < data[i].tileIndexes.size(); ++j)
+        {
+            int idx = data[i].tileIndexes[j];
+            if (idx >= macroTiles.size()) continue;
+            out[i].tiles[j] = macroTiles[data[i].tileIndexes[j]];
+            out[i].macroIndex[j] = idx;
+            out[i].palettes[j] = data[i].palettes[j];
+            out[i].collision[j] = data[i].collision[j];
+        }
+    }
+    return out;
 }

@@ -1,6 +1,6 @@
 #include "cgramdecoder.h"
 #include "address.h"
-#include <iostream>
+#include <print>
 
 static ColorRGBA decodeSNESColor(uint16_t raw)
 {
@@ -39,11 +39,16 @@ uint16_t encodeSNESColor(const ColorRGBA& c)
     return (b << 10) | (g << 5) | r;
 }
 
-void writeSNESColor(std::vector<uint8_t>& rom, uint32_t addr, const ColorRGBA& c)
+MemoryDelta writeSNESColor(std::vector<uint8_t>& rom, uint32_t addr, const ColorRGBA& c)
 {
+    MemoryDelta mem;
     uint16_t raw = encodeSNESColor(c);
-    rom[addr] = raw & 0xFF;
-    rom[addr + 1] = raw >> 8;
+    mem.address = addr;
+    mem.newData.push_back(uint8_t(raw & 0xFF));
+    mem.oldData.push_back(rom[addr]);
+    mem.newData.push_back(uint8_t(raw >> 8));
+    mem.oldData.push_back(rom[addr + 1]);
+    return mem;
 }
 
 std::vector<ColorRGBA> decodeNESPalette(const std::vector<uint8_t>& palData)
@@ -256,7 +261,9 @@ void writeAnimatedPalettes(std::vector<uint8_t>& rom, uint32_t pal_addr, bool hi
 
             for (int i = 0; i < blockSize; i += 2)
             {
-                writeSNESColor(rom, dstAddr + i, pal[i / 2]);
+                MemoryDelta mem = writeSNESColor(rom, dstAddr + i, pal[i / 2]);
+                rom[mem.address++] = mem.newData[0];
+                rom[mem.address] = mem.newData[1];
             }
 
             current[bit] = pal;
@@ -265,3 +272,98 @@ void writeAnimatedPalettes(std::vector<uint8_t>& rom, uint32_t pal_addr, bool hi
         frameIndex += 6;
     }
 }
+
+DataChanged writeAnimatedColor(std::vector<uint8_t>& rom, uint32_t pal_addr, bool hiROM, PalAnimation& anim, int frameIndex, int colorIndex, const ColorRGBA& newColor)
+{
+    DataChanged data;
+
+    anim.frames[frameIndex][colorIndex] = newColor;
+
+    uint8_t yy = 0;
+    for (int i = 0; i < 6; i++)
+    {
+        bool used = false;
+        for (const auto& c : anim.frames[i])
+        {
+            if (c.r != 0 || c.g != 0 || c.b != 0)
+            {
+                used = true;
+                break;
+            }
+        }
+        if (used)
+            yy |= (1 << i);
+    }
+
+    if (rom[pal_addr] != yy)
+    {
+        MemoryDelta mem;
+        mem.address = pal_addr;
+        mem.oldData.push_back(rom[pal_addr]);
+        mem.newData.push_back(yy);
+        data.deltas.push_back(mem);
+    }
+
+    uint32_t ptr = pal_addr + 1;
+    uint32_t tableBank = pal_addr & 0xFF0000;
+
+    ptr += frameIndex * 2;
+
+    uint16_t src = rom[ptr] | (rom[ptr + 1] << 8);
+    if (src == 0xFFFF)
+        return data;
+
+    uint32_t snesAddr = tableBank | (src + (frameIndex % 6) * 32);
+    uint32_t dstAddr = snesToPc(snesAddr, hiROM);
+    MemoryDelta mem2 = writeSNESColor(rom, dstAddr + (colorIndex * 2), newColor);
+    data.deltas.push_back(mem2);
+
+    return data;
+}
+
+DataChanged writeAnimatedPalette(std::vector<uint8_t>& rom, uint32_t pal_addr, bool hiROM, PalAnimation& anim, int frameIndex, const Palette& newPal)
+{
+    DataChanged data;
+
+    anim.frames[frameIndex] = newPal;
+
+    uint8_t yy = 0;
+    for (int i = 0; i < 6; i++)
+    {
+        for (const auto& c : anim.frames[i])
+        {
+            if (c.r || c.g || c.b)
+            {
+                yy |= (1 << i);
+                break;
+            }
+        }
+    }
+
+    MemoryDelta mem;
+    mem.address = pal_addr;
+    mem.oldData.push_back(rom[pal_addr]);
+    mem.newData.push_back(yy);
+    data.deltas.push_back(mem);
+
+    uint32_t ptr = pal_addr + 1;
+    uint32_t tableBank = pal_addr & 0xFF0000;
+
+    ptr += frameIndex * 2;
+
+    uint16_t src = rom[ptr] | (rom[ptr + 1] << 8);
+    if (src == 0xFFFF)
+        return data;
+
+    uint32_t snesAddr = tableBank | (src + (frameIndex % 6) * 32);
+    uint32_t dstAddr = snesToPc(snesAddr, hiROM);
+
+    for (int i = 0; i < 16; i++)
+    {
+        MemoryDelta mem2 = writeSNESColor(rom, dstAddr + (i * 2), newPal[i]);
+        data.deltas.push_back(mem2);
+    }
+
+    return data;
+}
+

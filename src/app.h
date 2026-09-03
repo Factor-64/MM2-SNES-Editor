@@ -10,6 +10,7 @@
 #include "game/objects.h"
 #include "game/level.h"
 #include "game/checkpoint.h"
+#include "undoredo.h"
 
 class App {
 public:
@@ -20,8 +21,9 @@ public:
 private:
     struct TileEditResult {
         bool clicked = false;
-        int px = 0;
-        int py = 0;
+        bool down = false;
+        int px = -1;
+        int py = -1;
     };
 
     struct TileLink {
@@ -136,7 +138,6 @@ private:
 
         SNESHeader header{};
         
-        //TODO convert vectors to arrays as most of these are fixed sizes
         std::vector<MM2_Data> data;
         std::vector<Tile> levelTiles;
         std::vector<Tile> layer3Tiles;
@@ -148,7 +149,7 @@ private:
         std::vector<uint8_t> levelData;
         std::vector<BGTileData> layer2TileData;
         std::vector<BGTileData> layer3TileData;
-        std::vector<uint8_t> scrollData;
+        ScrollData scrollData;
         std::array<ScrollEnable, 64> bgScrollData;
         std::array<BGPositionData, 3> bgPositionData;
         std::array<BGTilemapMirror, 64> bgTilemapMirror;
@@ -186,6 +187,9 @@ private:
         int animTimer = 0;
 
         ImageData image;
+
+        UndoStack undoStack;
+        RedoStack redoStack;
     };
 
     SDL_Window* window = nullptr;
@@ -201,13 +205,11 @@ private:
     void drawHeaderWindow();
     void drawScrollData();
     void drawBGScrollData();
-    void saveROMData();
+    //void saveROMData();
     void drawLevelView();
     void drawTileView();
     void SelectTileFromClick(int tileX, int tileY, int atlasWidth);
-    void PaintTileGeneric(int tileX, int tileY, int atlasWidth, const bool color);
-    void PaintTilePixel(int tileIndex, int x, int y, bool is2bpp);
-    void PaintMacroTilePixel(int macroIndex, int x, int y);
+    DataChanged PaintMetaTile(int tileX, int tileY, int atlasWidth, const bool color);
     void DrawColorButton(const std::string& id, ColorRGBA& col, const PaletteType type, size_t paletteIndex, int colorIndex, const char* popupName, const LevelEntry& level, ImVec2 size = ImVec2(0, 0));
     void DrawPaletteRow(const char* label, size_t index, Palette& pal, int colorsPerPalette, const PaletteType type, const char* popupName, const char* ident, const LevelEntry& level);
     void DrawAllPalettes(int colorsPerPalette, const char* popupName, const LevelEntry& level);
@@ -223,11 +225,22 @@ private:
     void applyAnimationFrame();
     void saveBinary(const LevelField field, const int lvl, const int mode);
     void drawEditMode();
-    void PaintTileBackground(std::vector<BGTileData>& data, int tileX, int tileY, int atlasWidth, const bool color, const bool subPal);
-    void updateScollPreview();
+    MemoryDelta PaintTileBackground(std::vector<BGTileData>& data, int tileX, int tileY, int atlasWidth, const bool color, const bool subPal);
+    void updateScrollPreview();
     void drawGraphicsWindow();
     TileEditResult DrawTileEdit(TilemapTexture& tex, int& selX, int& selY, const int& tileW, const int& tileH, const float& scale, const Palette& pal, const int& psize, int& selectedColor, const int& trueWidth, const int& trueHeight);
-    bool DrawGraphicsTileEdit(ImDrawList* dl, TilemapTexture& tex, std::vector<Tile>& tiles, const ImVec2& min, const int& tileIdx, const int& atlasWidth, const int& tileW, const int& tileH, const bool imgPal, bool x2, int& selectedColor, const int& trueWidth, const int& trueHeight);
+    void saveROMData(MemoryDelta& m);
+    void saveROMData(DataChanged& d);
+    void processAnimation(double& acc);
+    void processMenuActions();
+    void handleShortcuts();
+    void handleFileDialogResult(const std::string& key);
+    void processFileDialogs();
+    void handleExport(MenuState state);
+    void saveBinaryGFX(LevelField field, std::string levelName, int mode);
+    void saveBinaryPaletteAnimation(const LevelEntry& level, const std::string levelName, int mode);
+    void openExportDialog(uint32_t offset, const std::string& levelName, const std::string& tag);
+    
     std::vector<uint8_t> exportData;
     int currentExportIndex = -1;
 

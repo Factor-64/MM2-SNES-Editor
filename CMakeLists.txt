@@ -50,6 +50,7 @@ add_executable(SNTE
     src/snes/address.h src/snes/address.cpp
     src/game/checkpoint.h src/game/checkpoint.cpp
     src/imageloader.h src/imageloader.cpp
+    src/undoredo.h src/undoredo.cpp
 )
 
 target_link_libraries(SNTE

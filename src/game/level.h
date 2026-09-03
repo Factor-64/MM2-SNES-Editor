@@ -1,13 +1,12 @@
 #pragma once
 #include <vector>
 #include <array>
+#include "../undoredo.h"
 
 struct ScrollEnable {
     bool bg2 = false;
     bool bg3 = false;
 };
-
-
 
 struct BGTilemapMirror {
     uint8_t bg2_mode = 0x28; // 28, 29, 2A
@@ -22,28 +21,27 @@ struct BGTilemapMirror {
     */
 };
 
-struct BGSpeedData
-{
+struct BGSpeedData {
     uint8_t frames = 0;
     uint8_t scanlines = 0;
     uint8_t frame_count = 0;
 };
 
+using ScrollData = std::array<uint8_t, 512>;
+
 std::vector<uint8_t> loadLevelData(const std::vector<uint8_t>& rom, uint32_t addr, int count);
-std::vector<uint8_t> loadScrollData(const std::vector<uint8_t>& rom, uint32_t addr, int count);
+ScrollData loadScrollData(const std::vector<uint8_t>& rom, uint32_t addr);
 std::vector<uint8_t> remapColumnMajorScreensHorizontally(const std::vector<uint8_t>& levelData);
 int metaWidthFromLevelData(const std::vector<uint8_t>& levelData);
 
-void saveLevelData(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<uint8_t>& newData);
-void saveScrollData(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<uint8_t>& data);
+MemoryDelta saveLevelData(std::vector<uint8_t>& rom, uint32_t addr, int screenIndex, int row, int col, uint8_t value);
+//void saveScrollData(std::vector<uint8_t>& rom, uint32_t addr, const std::vector<uint8_t>& data);
 
 std::array<ScrollEnable, 64> loadBackgroundScrollData(const std::vector<uint8_t>& rom, uint32_t addr);
-void saveBackgroundScrollData(std::vector<uint8_t>& rom, uint32_t addr, const std::array<ScrollEnable, 64>& data);
-
-
+MemoryDelta saveBackgroundScrollData(std::vector<uint8_t>& rom, uint32_t addr, const ScrollEnable& data);
 
 std::array<BGTilemapMirror, 64> loadBGTilemapMirror(const std::vector<uint8_t>& rom, uint32_t addr);
-void saveBGTilemapMirror(std::vector<uint8_t>& rom, uint32_t addr, const std::array<BGTilemapMirror, 64>& data);
+MemoryDelta saveBGTilemapMirror(std::vector<uint8_t>& rom, uint32_t addr, const BGTilemapMirror& data);
 
 std::array<std::array<BGSpeedData, 4>, 32> loadBGScrollSpeeds(const std::vector<uint8_t>& rom, uint32_t addr);
-void saveBGScrollSpeeds(std::vector<uint8_t>& rom, uint32_t addr, const std::array<std::array<BGSpeedData, 4>, 32>& data);
+MemoryDelta saveBGScrollSpeeds(std::vector<uint8_t>& rom, uint32_t addr, const std::array<BGSpeedData, 4>& data);

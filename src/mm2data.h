@@ -36,8 +36,8 @@ struct LevelEntry {
     uint32_t bg_tilemap;
     uint32_t bg_scroll;
     uint32_t bg_start;
-    uint32_t bg_checkpoint;
-    uint32_t bg_boss;
+    //uint32_t bg_checkpoint;
+    //uint32_t bg_boss;
     uint32_t bg_mirror;
     uint32_t bg_speed;
 

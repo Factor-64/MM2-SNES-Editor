@@ -76,6 +76,358 @@ void App::initImGui()
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
 }
 
+void openDialogOnce(const char* key, const char* title, const char* filters, IGFD::FileDialogConfig& cfg) 
+{
+    if (!ImGuiFileDialog::Instance()->IsOpened(key))
+        ImGuiFileDialog::Instance()->OpenDialog(key, title, filters, cfg);
+}
+
+void App::processFileDialogs()
+{
+    auto* dlg = ImGuiFileDialog::Instance();
+    if (!dlg->IsOpened())
+        return;
+
+    ImVec2 vp = ImGui::GetMainViewport()->Size;
+    ImVec2 minSize(vp.x * 0.6f, vp.y * 0.6f);
+    std::string key = dlg->GetOpenedKey();
+
+    if (dlg->Display(key, ImGuiWindowFlags_NoCollapse, minSize, vp))
+    {
+        if (dlg->IsOk())
+            handleFileDialogResult(key);
+        else
+        {
+            menuState = MS_NULL;
+            exportingData = false;
+            exportingAllData = false;
+            currentExportIndex = -1;
+        }
+
+        dlg->Close();
+    }
+}
+
+void App::handleFileDialogResult(const std::string& key)
+{
+    auto* dlg = ImGuiFileDialog::Instance();
+    std::string path = dlg->GetFilePathName();
+
+    if (key == "ChooseROM")
+    {
+        EditorState e{};
+        editor = e;
+        editor.romName = dlg->GetCurrentFileName();
+
+        std::ifstream f(path, std::ios::binary);
+        editor.rom.clear();
+        editor.rom.assign(std::istreambuf_iterator<char>(f), {});
+
+        if (editor.rom.size() % 0x4000 == 512)
+            editor.rom.erase(editor.rom.begin(), editor.rom.begin() + 512);
+
+        editor.header = readSNESHeader(editor.rom);
+        editor.isHiROM = (editor.header.mapMode & 0x10) != 0;
+        editor.romLoaded = true;
+        editor.rebuildData = true;
+    }
+    else if (key == "ChooseJSON")
+    {
+        editor.data = loadMM2Data(path, editor.isHiROM);
+        editor.jsonLoaded = true;
+        editor.rebuildData = true;
+    }
+    else if (key == "ChoosePalette")
+    {
+        std::ifstream f(path, std::ios::binary);
+        editor.nesMasterPalette =
+            decodeNESMasterPalette(std::vector<uint8_t>(std::istreambuf_iterator<char>(f), {}));
+        editor.paletteLoaded = true;
+        editor.rebuildData = true;
+    }
+    else if (key == "SaveROM")
+    {
+        saveROMData();
+        std::ofstream out(path, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(editor.rom.data()), editor.rom.size());
+    }
+    else if (key == "SaveBinary")
+    {
+        std::ofstream out(path, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(exportData.data()), exportData.size());
+        exportData.clear();
+
+        if (currentExportIndex > -1)
+            ++currentExportIndex;
+        else if (currentExportIndex < -1)
+            menuState = MS_ExportPaletteAnimation;
+        else if (menuState == MS_NULL)
+            exportingData = false;
+    }
+    else if (key == "ChooseData")
+    {
+        auto paths = dlg->GetSelection();
+        for (auto& sel : paths)
+        {
+            const std::string& fileName = sel.first;
+            const std::string& spath = sel.second;
+            size_t pos = fileName.rfind('_');
+            std::string address = fileName.substr(pos + 1);
+            uint32_t addr = std::stoul(address, nullptr, 16);
+            addr = snesToPc(addr, editor.isHiROM);
+
+            std::ifstream f(spath, std::ios::binary);
+            std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)),
+                std::istreambuf_iterator<char>());
+
+            if (addr + data.size() > editor.rom.size())
+                editor.rom.resize(addr + data.size());
+
+            std::copy(data.begin(), data.end(), editor.rom.begin() + addr);
+            editor.rebuildData = true;
+        }
+    }
+    else if (key == "ChooseIndexedImage")
+    {
+        std::string filename = dlg->GetCurrentFileName();
+        std::string ext;
+        if (size_t dot = filename.find_last_of('.'); dot != std::string::npos)
+            ext = filename.substr(dot + 1);
+
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+        std::vector<uint8_t> pixels;
+        int width = 0, height = 0;
+        bool success = false;
+
+        if (ext == "png")
+            success = loadIndexedPNG(path, editor.image.pal, pixels, width, height);
+        else if (ext == "bmp")
+            success = loadIndexedBMP(path, editor.image.pal, pixels, width, height);
+
+        if (success)
+        {
+            editor.image.tiles4bpp = extractTiles(pixels, width, height);
+            if (editor.mode == 0)
+                editor.image.tiles4bpp = convert4bppTo2bpp(editor.image.tiles4bpp);
+            else
+                editor.image.tiles2bpp = convert4bppTo2bpp(editor.image.tiles4bpp);
+            editor.image.reload = true;
+        }
+    }
+}
+
+void App::processMenuActions()
+{
+    if (menuState == MS_NULL)
+        return;
+
+    switch (menuState)
+    {
+    case MS_ImportGraphics:
+    {
+        IGFD::FileDialogConfig cfg;
+        cfg.countSelectionMax = 1;
+        openDialogOnce("ChooseIndexedImage", "Select Index Image File",
+            "PNG (*.png){.png},BMP (*.bmp){.bmp}", cfg);
+        break;
+    }
+
+    case MS_OpenLoadJson:
+    {
+        IGFD::FileDialogConfig cfg;
+        cfg.countSelectionMax = 1;
+        openDialogOnce("ChooseJSON", "Select JSON File",
+            "JSON (*.json){.json},All files (*.*){.*}", cfg);
+        break;
+    }
+
+    case MS_OpenLoadROM:
+    {
+        IGFD::FileDialogConfig cfg;
+        cfg.countSelectionMax = 1;
+        openDialogOnce("ChooseROM", "Select ROM File",
+            "SNES ROMs (*.sfc *.smc){.sfc,.smc},Binary (*.bin){.bin},All files (*.*){.*}", cfg);
+        break;
+    }
+
+    case MS_OpenLoadPal:
+    {
+        IGFD::FileDialogConfig cfg;
+        cfg.countSelectionMax = 1;
+        openDialogOnce("ChoosePalette", "Select Palette File",
+            "Palette (*.pal){.pal},Binary (*.bin){.bin},All files (*.*){.*}", cfg);
+        break;
+    }
+
+    case MS_OpenExportROM:
+    {
+        IGFD::FileDialogConfig cfg;
+        cfg.countSelectionMax = 1;
+        cfg.fileName = editor.romName;
+        cfg.flags = ImGuiFileDialogFlags_ConfirmOverwrite;
+
+        openDialogOnce("SaveROM", "Save ROM As...",
+            "SNES ROM (*.sfc){.sfc},All files (*.*){.*}", cfg);
+        break;
+    }
+
+    case MS_ImportData:
+    {
+        IGFD::FileDialogConfig cfg;
+        cfg.countSelectionMax = 0;
+        openDialogOnce("ChooseData", "Select Bin File",
+            "Binary (*.bin){.bin},All files (*.*){.*}", cfg);
+        break;
+    }
+
+    case MS_OpenHeaderWindow:
+        openHeader = true;
+        break;
+
+    case MS_OpenGraphics:
+        openGraphics = true;
+        break;
+
+    default:
+        handleExport(menuState);
+        return;
+    }
+
+    menuState = MS_NULL;
+}
+
+void App::handleExport(MenuState state)
+{
+    switch (state)
+    {
+    case MS_ExportGraphics:
+        saveBinary(LF_LevelGFX, editor.selectedLevel, editor.mode);
+        return;
+    case MS_ExportLayer2TilemapData:
+        saveBinary(LF_Layer2TilemapData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportLayer3TilemapData:
+        saveBinary(LF_Layer3TilemapData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportCommonGFX:
+        saveBinary(LF_CommonGFX, editor.selectedLevel, editor.mode);
+        return;
+    case MS_ExportMetaTiles:
+        saveBinary(LF_MetaTileData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportMetaTilePal:
+        saveBinary(LF_MetaTilePaletteData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportLayout:
+        saveBinary(LF_LevelData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportCollision:
+        saveBinary(LF_CollisionData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportScroll:
+        saveBinary(LF_ScrollData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportEnemy:
+        saveBinary(LF_EnemyData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportItem:
+        saveBinary(LF_ItemData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportMidpoint:
+        saveBinary(LF_MidPointData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportPatternTable:
+        saveBinary(LF_PatternTable, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportPalette:
+        saveBinary(LF_PaletteData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportLayer2Palette:
+        saveBinary(LF_Layer2PaletteData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportLayer3Palette:
+        saveBinary(LF_Layer2PaletteData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportPaletteAnimation:
+        saveBinary(LF_PaletteAnimationData, editor.selectedLevel, editor.mode);
+        return;
+    case MS_ExportBGScrollSpeedData:
+        saveBinary(LF_BGScrollSpeedData, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportBGTilemapMirroring:
+        saveBinary(LF_BGTilemapMirroring, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportBGScrollEnable:
+        saveBinary(LF_BGScrollEnable, editor.selectedLevel, editor.mode);
+        break;
+    case MS_ExportAllData:
+        exportingAllData = true;
+        return;
+    default:
+        break;
+    }
+    menuState = MS_NULL;
+}
+
+void App::processAnimation(double& acc)
+{
+    constexpr double step = 1.0 / 60.0;
+
+    if (acc < step)
+        return;
+
+    int frames = int(acc / step);
+    acc -= frames * step;
+
+    for (int i = 0; i < frames; ++i)
+    {
+        updatePaletteAnimation();
+        updateScrollPreview();
+    }
+}
+
+void App::handleShortcuts()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    bool ctrl = io.KeyCtrl;
+    bool shift = io.KeyShift;
+
+    int zoomDelta = 0;
+
+    if (ctrl)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Equal)) zoomDelta = 1;
+        if (ImGui::IsKeyPressed(ImGuiKey_Minus)) zoomDelta = -1;
+
+        if (shift && ImGui::IsKeyPressed(ImGuiKey_Z))
+            editor.rebuildData = redo(editor.undoStack, editor.redoStack, editor.rom);
+        else if (ImGui::IsKeyPressed(ImGuiKey_Z))
+            editor.rebuildData = undo(editor.undoStack, editor.redoStack, editor.rom);
+    }
+
+    if (zoomDelta != 0)
+    {
+        switch (editor.activeWindow)
+        {
+        case AW_Tileset:
+            editor.tilesetZoom = std::clamp(editor.tilesetZoom + zoomDelta, 1, 8);
+            break;
+        case AW_Editor:
+            editor.editorZoom = std::clamp(editor.editorZoom + zoomDelta, 1, 8);
+            break;
+        case AW_Graphics:
+            editor.graphicsZoom = std::clamp(editor.graphicsZoom + zoomDelta, 1, 8);
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_B))
+        editor.paintMode = !editor.paintMode;
+}
+
 void App::run()
 {
     bool quit = false;
@@ -89,17 +441,11 @@ void App::run()
 
         animAccumulator += delta;
 
-        while (animAccumulator >= (1.0 / 60.0))
-        {
-            updatePaletteAnimation();
-            updateScollPreview();
-            animAccumulator -= (1.0 / 60.0);
-        }
+        processAnimation(animAccumulator);
 
         while (SDL_PollEvent(&e))
         {
             ImGui_ImplSDL3_ProcessEvent(&e);
-
             if (e.type == SDL_EVENT_QUIT)
                 quit = true;
         }
@@ -112,14 +458,13 @@ void App::run()
         ImGuiViewport* vp = ImGui::GetMainViewport();
         ImGui::DockSpaceOverViewport(vp->ID);
 
-        if (ImGui::IsKeyPressed(ImGuiKey_B))
-        {
-            editor.paintMode = !editor.paintMode;
-        }
+        handleShortcuts();
 
         drawMenu(menuState, editor.romLoaded, editor.jsonLoaded && editor.paletteLoaded, (editor.mode == 0 || exportingAllData));
+        processMenuActions();
+        processFileDialogs();
 
-        switch (menuState)
+        /*switch (menuState)
         {
         case MS_ImportGraphics: {
             if (!ImGuiFileDialog::Instance()->IsOpened())
@@ -486,46 +831,9 @@ void App::run()
 
                 ImGuiFileDialog::Instance()->Close();
             }
-        }
+        }*/
         if (editor.romLoaded && editor.jsonLoaded && editor.paletteLoaded)
         {
-            bool ctrl = ImGui::GetIO().KeyCtrl;
-            int zoomDelta = 0;
-
-            if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Equal)) zoomDelta = 1;
-            if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Minus)) zoomDelta = -1;
-
-            if (zoomDelta != 0)
-            {
-                switch (editor.activeWindow)
-                {
-                case AW_Tileset:
-                    editor.tilesetZoom += zoomDelta;
-                    if (editor.tilesetZoom < 1)
-                        editor.tilesetZoom = 1;
-                    else if (editor.tilesetZoom > 8)
-                        editor.tilesetZoom = 8;
-                    break;
-
-                case AW_Editor:
-                    editor.editorZoom += zoomDelta;
-                    if (editor.editorZoom < 1)
-                        editor.editorZoom = 1;
-                    else if (editor.editorZoom > 8)
-                        editor.editorZoom = 8;
-                    break;
-                case AW_Graphics:
-                    editor.graphicsZoom += zoomDelta;
-                    if (editor.graphicsZoom < 1)
-                        editor.graphicsZoom = 1;
-                    else if (editor.graphicsZoom > 8)
-                        editor.graphicsZoom = 8;
-                    break;
-                default:
-                    break;
-                }
-            }
-
             drawPaletteWindow();
             drawTilesetWindow();
             drawLevelWindow();
@@ -577,259 +885,268 @@ void App::run()
     }
 }
 
-void App::updateScollPreview()
+void App::updateScrollPreview()
 {
-    BGSpeedData* l2;
-    BGSpeedData* l3;
-    if (!editor.scrollLayer2Vertical)
-        l2 = &editor.bgScrollSpeeds[editor.currentScreenId][0];
-    else
-        l2 = &editor.bgScrollSpeeds[editor.currentScreenId][2];
-    if (!editor.scrollLayer3Vertical)
-        l3 = &editor.bgScrollSpeeds[editor.currentScreenId][1];
-    else
-        l3 = &editor.bgScrollSpeeds[editor.currentScreenId][3];
-    if (l2->frames != 0)
-    {
-        --l2->frame_count;
-        if (l2->frame_count == 0)
+    auto& speeds = editor.bgScrollSpeeds[editor.currentScreenId];
+
+    BGSpeedData* l2 = &speeds[editor.scrollLayer2Vertical ? 2 : 0];
+    BGSpeedData* l3 = &speeds[editor.scrollLayer3Vertical ? 3 : 1];
+
+    auto updateLayer = [](BGSpeedData* bg, int& scanlineTarget)
         {
-            l2->frame_count = l2->frames;
-            editor.layer2Scanlines += l2->scanlines;
-        }
-    }
-    else
-    {
-        editor.layer2Scanlines += l2->scanlines;
-    }
-    if (l3->frames != 0)
-    {
-        --l3->frame_count;
-        if (l3->frame_count == 0)
-        {
-            l3->frame_count = l3->frames;
-            editor.layer3Scanlines += l3->scanlines;
-        }
-    }
-    else
-    {
-        editor.layer3Scanlines += l2->scanlines;
-    }
-}
-
-void App::saveBinary(const LevelField field, const int lvl, const int mode)
-{
-    if (ImGuiFileDialog::Instance()->IsOpened())
-        return;
-
-    auto& names = editor.data[mode].levelNames;
-    std::string levelName = names[lvl];
-    const LevelEntry& level = editor.data[mode].levels.at(levelName);
-
-    uint32_t offset = 0;
-    uint32_t size = 0;
-
-    switch (field)
-    {
-    default:
-        return;
-    case LF_CommonGFX:
-        levelName = "common";
-        [[fallthrough]];
-    case LF_LevelGFX: {
-        const auto& gfx = editor.data[mode].gfx;
-        auto& levelGfx = gfx.at(levelName);
-
-        if (currentExportIndex == -1)
-            currentExportIndex = 0;
-
-        if (currentExportIndex >= levelGfx.layer12.size())
-        {
-            currentExportIndex = -1;
-            menuState = MS_NULL;
-            exportingData = false;
-            return;
-        }
-
-        uint32_t start = levelGfx.layer12[currentExportIndex].start;
-        uint32_t end = levelGfx.layer12[currentExportIndex].end;
-
-        offset = start;
-        size = end - start;
-        break;
-    }
-    case LF_MetaTileData:
-        offset = level.chip32x32;
-        size = 0x400;
-        break;
-    case LF_MetaTilePaletteData:
-        offset = level.chip32x32_palette;
-        size = 0x100;
-        break;
-    case LF_Layer2TilemapData:
-        offset = level.bg_tilemap;
-        size = 0x1000;
-        break;
-    case LF_Layer3TilemapData:
-        offset = level.bg_tilemap + 0x1000;
-        size = 0x1000;
-        break;
-    case LF_BGScrollEnable:
-        offset = level.bg_scroll;
-        size = 0x40;
-        break;
-    case LF_BGScrollSpeedData:
-        offset = level.bg_speed;
-        size = 0x80;
-        break;
-    case LF_BGTilemapMirroring:
-        offset = level.bg_mirror;
-        size = 0x80;
-        break;
-    case LF_LevelData:
-        offset = level.map;
-        size = 0xB00;
-        break;
-    case LF_CollisionData:
-        offset = level.collision;
-        size = 0x400;
-        break;
-    case LF_ScrollData:
-        offset = level.scroll;
-        size = 0x200;
-        break;
-    case LF_EnemyData:
-        offset = level.enemy_screen;
-        size = 0x300;
-        break;
-    case LF_ItemData:
-        offset = level.item_screen;
-        size = 0xC0;
-        break;
-    case LF_MidPointData:
-        offset = level.midpoint_start_y;
-        size = 0x3C;
-        break;
-    case LF_PatternTable:
-        offset = level.pattern;
-        size = 0x200;
-        break;
-    case LF_PaletteData:
-        offset = level.palette_data;
-        size = mode == 0 ? 16 : 256;
-        break;
-    case LF_Layer2PaletteData:
-        offset = level.palette_layer2;
-        size = 32;
-        break;
-    case LF_Layer3PaletteData:
-        offset = level.palette_layer3;
-        size = 32;
-        break;
-    case LF_PaletteAnimationData: {
-        if (currentExportIndex == -1)
-        {
-            offset = level.palette_afc;
-            size = 2;
-            --currentExportIndex;
-            break;
-        }
-        else if (currentExportIndex == -2)
-        {
-            offset = level.palette_anime;
-            if (mode == 0)
+            if (bg->frames > 0)
             {
-                uint8_t fc = editor.rom[level.palette_afc];
-                currentExportIndex = -1;
-                menuState = MS_NULL;
-                exportingData = false;
-                if (fc == 0)
-                    return;
-                size = fc * 16;
+                if (--bg->frame_count == 0)
+                {
+                    bg->frame_count = bg->frames;
+                    scanlineTarget += bg->scanlines;
+                }
             }
             else
             {
-                size = std::popcount(editor.rom[level.palette_anime]) * 2;
-                --currentExportIndex;
+                scanlineTarget += bg->scanlines;
             }
-            break;
-        }
-        else
-        {
-            uint8_t frameCount = editor.rom[level.palette_afc];
-            uint8_t yy = editor.rom[level.palette_anime];
-            int numBlocks = std::popcount(yy);
+        };
 
-            if (currentExportIndex == -3)
-                currentExportIndex = 0;
+    updateLayer(l2, editor.layer2Scanlines);
+    updateLayer(l3, editor.layer3Scanlines);
+}
 
-            if (currentExportIndex >= frameCount)
-            {
-                currentExportIndex = -1;
-                menuState = MS_NULL;
-                return;
-            }
-
-            int frame = currentExportIndex;
-
-            uint32_t ptr = level.palette_anime + 1 + frame * 2;
-            uint16_t src = editor.rom[ptr] | (editor.rom[ptr + 1] << 8);
-
-            if (src == 0xFFFF)
-            {
-                ++currentExportIndex;
-                return;
-            }
-
-            uint32_t tableBank = level.palette_anime & 0xFF0000;
-
-            exportData.clear();
-            exportData.reserve(numBlocks * 32);
-
-            for (int bit = 0; bit < 8; ++bit)
-            {
-                if (!(yy & (1 << bit)))
-                    continue;
-
-                uint32_t snesAddr = tableBank | (src + bit * 32);
-                if (offset <= 0)
-                    offset = snesAddr;
-                uint32_t pcAddr = snesToPc(snesAddr, editor.isHiROM);
-
-                for (int i = 0; i < 32; ++i)
-                    exportData.push_back(editor.rom[pcAddr + i]);
-            }
-        }
-        break;
-    }
-    }
-
-    if (offset + size > editor.rom.size() || offset == 0)
-    {
-        exportingData = false;
-        return;
-    }
-    else if (size > 0)
-    {
-        exportData = std::vector<uint8_t>(editor.rom.begin() + offset, editor.rom.begin() + offset + size);
-    }
+void App::openExportDialog(uint32_t offset, const std::string& levelName, const std::string& tag)
+{
     std::stringstream ss;
     ss << std::uppercase << std::setw(6) << std::setfill('0') << std::hex << offset;
-    std::string fileName = levelName + '_' + ss.str() + ".bin";
+    std::string fileName = levelName + "-" + tag + "_" + ss.str() + ".bin";
 
     exportingData = true;
 
-    IGFD::FileDialogConfig config;
-    config.countSelectionMax = 1;
-    config.fileName = fileName;
-    config.flags = ImGuiFileDialogFlags_ConfirmOverwrite;
+    IGFD::FileDialogConfig cfg;
+    cfg.countSelectionMax = 1;
+    cfg.fileName = fileName;
+    cfg.flags = ImGuiFileDialogFlags_ConfirmOverwrite;
 
     ImGuiFileDialog::Instance()->OpenDialog(
         "SaveBinary",
         "Save Binary",
         "Binary (*.bin){.bin},All files (*.*){.*}",
-        config
+        cfg
     );
+}
+
+void App::saveBinaryGFX(LevelField field, std::string levelName, int mode)
+{
+    auto* dlg = ImGuiFileDialog::Instance();
+    if (dlg->IsOpened())
+        return;
+
+    if (field == LF_CommonGFX)
+        levelName = "common";
+
+    const auto& gfx = editor.data[mode].gfx;
+    const auto& levelGfx = gfx.at(levelName);
+
+    if (currentExportIndex == -1)
+        currentExportIndex = 0;
+
+    if (currentExportIndex >= levelGfx.layer12.size())
+    {
+        currentExportIndex = -1;
+        exportingData = false;
+        menuState = MS_NULL;
+        return;
+    }
+
+    const auto& block = levelGfx.layer12[currentExportIndex];
+    uint32_t offset = block.start;
+    uint32_t size = block.end - block.start;
+
+    exportData.assign(editor.rom.begin() + offset,
+        editor.rom.begin() + offset + size);
+
+    openExportDialog(offset, levelName, "gfx");
+}
+
+void App::saveBinaryPaletteAnimation(const LevelEntry& level, const std::string levelName, int mode)
+{
+    auto* dlg = ImGuiFileDialog::Instance();
+    if (dlg->IsOpened())
+        return;
+
+    uint8_t fc = editor.rom[level.palette_afc];
+    uint8_t yy = editor.rom[level.palette_anime];
+    int numBlocks = std::popcount(yy);
+
+    if (currentExportIndex == -1)
+    {
+        exportData = { fc, 0 };
+        openExportDialog(level.palette_afc, levelName, "afc");
+        currentExportIndex = -2;
+        return;
+    }
+
+    if (currentExportIndex == -2)
+    {
+        if (mode == 0)
+        {
+            if (fc == 0)
+            {
+                exportingData = false;
+                menuState = MS_NULL;
+                return;
+            }
+
+            uint32_t size = fc * 16;
+            exportData.assign(editor.rom.begin() + level.palette_anime,
+                editor.rom.begin() + level.palette_anime + size);
+
+            openExportDialog(level.palette_anime, levelName, "anime");
+            currentExportIndex = -3;
+            return;
+        }
+        else
+        {
+            uint32_t size = numBlocks * 2;
+            exportData.assign(editor.rom.begin() + level.palette_anime,
+                editor.rom.begin() + level.palette_anime + size);
+
+            openExportDialog(level.palette_anime, levelName, "anime");
+            currentExportIndex = -3;
+            return;
+        }
+    }
+
+    if (currentExportIndex == -3)
+        currentExportIndex = 0;
+
+    if (currentExportIndex >= fc)
+    {
+        currentExportIndex = -1;
+        exportingData = false;
+        menuState = MS_NULL;
+        return;
+    }
+
+    int frame = currentExportIndex;
+
+    uint32_t ptr = level.palette_anime + 1 + frame * 2;
+    uint16_t src = editor.rom[ptr] | (editor.rom[ptr + 1] << 8);
+
+    if (src == 0xFFFF)
+    {
+        ++currentExportIndex;
+        return;
+    }
+
+    uint32_t tableBank = level.palette_anime & 0xFF0000;
+    exportData.clear();
+    exportData.reserve(numBlocks * 32);
+
+    for (int bit = 0; bit < 8; ++bit)
+    {
+        if (!(yy & (1 << bit)))
+            continue;
+
+        uint32_t snesAddr = tableBank | (src + bit * 32);
+        uint32_t pcAddr = snesToPc(snesAddr, editor.isHiROM);
+
+        for (int i = 0; i < 32; ++i)
+            exportData.push_back(editor.rom[pcAddr + i]);
+    }
+    uint32_t firstBlockAddr = tableBank | src;
+    openExportDialog(firstBlockAddr, levelName, "frame");
+
+    ++currentExportIndex;
+}
+
+void App::saveBinary(LevelField field, int lvl, int mode)
+{
+    auto* dlg = ImGuiFileDialog::Instance();
+    if (dlg->IsOpened())
+        return;
+
+    const auto& names = editor.data[mode].levelNames;
+    std::string levelName = names[lvl];
+    const LevelEntry& level = editor.data[mode].levels.at(levelName);
+
+    struct ExportDef {
+        LevelField field;
+        std::string tag;
+        uint32_t LevelEntry::* offset;
+        uint32_t size;
+    };
+
+    static const ExportDef table[] = {
+        { LF_MetaTileData,          "metatiles",    &LevelEntry::chip32x32,          0x400},
+        { LF_MetaTilePaletteData,   "metatilepals", &LevelEntry::chip32x32_palette,  0x100},
+        { LF_Layer2TilemapData,     "l2tilemap",    &LevelEntry::bg_tilemap,         0x1000},
+        { LF_Layer3TilemapData,     "l3tilemap",    &LevelEntry::bg_tilemap,         0x2000}, // offset + 0x1000 later
+        { LF_BGScrollEnable,        "bgscroll",     &LevelEntry::bg_scroll,          0x40},
+        { LF_BGScrollSpeedData,     "bgspeed",      &LevelEntry::bg_speed,           0x80},
+        { LF_BGTilemapMirroring,    "bgmirroring",  &LevelEntry::bg_mirror,          0x80},
+        { LF_LevelData,             "level",        &LevelEntry::map,                0xB00},
+        { LF_CollisionData,         "collision",    &LevelEntry::collision,          0x400},
+        { LF_ScrollData,            "scroll",       &LevelEntry::scroll,             0x200},
+        { LF_EnemyData,             "enemy",        &LevelEntry::enemy_screen,       0x300},
+        { LF_ItemData,              "item",         &LevelEntry::item_screen,        0xC0},
+        { LF_MidPointData,          "checkpoint",   &LevelEntry::midpoint_start_y,   0x3C},
+        { LF_PatternTable,          "pattern",      &LevelEntry::pattern,            0x200},
+        { LF_Layer2PaletteData,     "l2palette",    &LevelEntry::palette_layer2,     32},
+        { LF_Layer3PaletteData,     "l3palette",    &LevelEntry::palette_layer3,     32},
+    };
+
+    uint32_t offset = 0;
+    uint32_t size = 0;
+    std::string tag = "";
+
+    if (field == LF_CommonGFX || field == LF_LevelGFX) 
+    {
+        saveBinaryGFX(field, levelName, mode);
+        return;
+    }
+
+    if (field == LF_PaletteAnimationData) 
+    {
+        saveBinaryPaletteAnimation(level, levelName, mode);
+        return;
+    }
+
+    if (field == LF_PaletteData)
+    {
+        offset = level.palette_data;
+        size = (mode == 0 ? 16 : 256);
+        tag = "palettes";
+    }
+
+    if (offset == 0) 
+    {
+        for (const auto& def : table) 
+        {
+            if (def.field == field) 
+            {
+                offset = level.*(def.offset);
+                size = def.size;
+                tag = def.tag;
+
+                if (field == LF_Layer3TilemapData)
+                    offset += 0x1000;
+
+                break;
+            }
+        }
+    }
+
+    if (offset == 0)
+        return;
+
+    if (offset + size > editor.rom.size()) 
+    {
+        exportingData = false;
+        return;
+    }
+
+    exportData.assign(editor.rom.begin() + offset, editor.rom.begin() + offset + size);
+
+    openExportDialog(offset, levelName, tag);
 }
 
 inline ImVec4 ColorU32ToVec4(ImU32 c)
@@ -843,25 +1160,26 @@ inline ImVec4 ColorU32ToVec4(ImU32 c)
 
 void App::drawTilesetWindow()
 {
-    ImGui::SetNextWindowSizeConstraints(
-        ImVec2(320, 240),
-        ImVec2(FLT_MAX, FLT_MAX)
-    );
+    ImGui::SetNextWindowSizeConstraints(ImVec2(320, 240), ImVec2(FLT_MAX, FLT_MAX));
     ImGui::Begin("Tileset", &open, ImGuiWindowFlags_HorizontalScrollbar);
+
     ImGui::SeparatorText("CONTROLS");
     ImGui::Text("CTRL+= and CTRL+- Zooms in and out");
-    if (editor.tileViewMode == VM_Tileset)
-        ImGui::Text("Left Click to Select a Tile");
-    else if (editor.tileViewMode == VM_Metatiles)
-        ImGui::Text("Left Click to Select a Meta Tile");
-    else
-        ImGui::Text("Left Click to Select a Collision Type");
+
+    int view = editor.tileViewMode;
+    static const char* clickText[] = {
+        "Left Click to Select a Tile",
+        "Left Click to Select a Meta Tile",
+        "Left Click to Select a Collision Type"
+    };
+    if (view > 2)
+        view = 0;
+    ImGui::Text("%s", clickText[view]);
+
     ImGui::Separator();
-    
+
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow))
-    {
         editor.activeWindow = AW_Tileset;
-    }
 
     if (ImGui::BeginCombo("Modes", editor.data[editor.mode].modeName.c_str()))
     {
@@ -871,11 +1189,14 @@ void App::drawTilesetWindow()
             if (ImGui::Selectable(editor.data[i].modeName.c_str(), selected))
             {
                 saveROMData();
-                editor.rebuildData = true;
                 editor.mode = i;
-                if (editor.mode == 0 && (editor.tileViewMode == VM_Layer2 || editor.tileViewMode == VM_Layer3))
+                editor.rebuildData = true;
+
+                if (editor.mode == 0 &&
+                    (editor.tileViewMode == VM_Layer2 || editor.tileViewMode == VM_Layer3))
+                {
                     editor.tileViewMode = VM_Tileset;
-                drawPaletteWindow();
+                }
             }
         }
         ImGui::EndCombo();
@@ -891,9 +1212,8 @@ void App::drawTilesetWindow()
             if (ImGui::Selectable(names[i].c_str(), selected))
             {
                 saveROMData();
-                editor.rebuildData = true;
                 editor.selectedLevel = i;
-                drawPaletteWindow();
+                editor.rebuildData = true;
             }
         }
         ImGui::EndCombo();
@@ -901,31 +1221,27 @@ void App::drawTilesetWindow()
 
     const std::string& levelName = names[editor.selectedLevel];
     const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
+
     const auto& gfx = editor.data[editor.mode].gfx;
+    const auto& commonGfx = gfx.at("common");
     auto levelGfx = gfx.at(levelName);
 
-    if (gfx.find("common") != gfx.end())
+    if (levelGfx.commonIdx.empty())
     {
-        const auto& commonGfx = gfx.at("common");
-
-        if (levelGfx.commonIdx.empty())
+        levelGfx.layer12.insert(
+            levelGfx.layer12.begin(),
+            commonGfx.layer12.begin(),
+            commonGfx.layer12.end()
+        );
+    }
+    else
+    {
+        for (size_t idx : levelGfx.commonIdx)
         {
-            levelGfx.layer12.insert(
-                levelGfx.layer12.begin(),
-                commonGfx.layer12.begin(),
-                commonGfx.layer12.end()
-            );
-        }
-        else
-        {
-            for (auto it = levelGfx.commonIdx.rbegin(); it != levelGfx.commonIdx.rend(); ++it)
-            {
-                size_t i = *it;
-                if (i >= commonGfx.layer12.size())
-                    throw std::runtime_error("commonIdx index out of range");
+            if (idx >= commonGfx.layer12.size())
+                throw std::runtime_error("commonIdx index out of range");
 
-                levelGfx.layer12.insert(levelGfx.layer12.begin(), commonGfx.layer12[i]);
-            }
+            levelGfx.layer12.insert(levelGfx.layer12.begin(), commonGfx.layer12[idx]);
         }
     }
 
@@ -939,12 +1255,9 @@ void App::drawTilesetWindow()
         editor.rebuildBackgrounds = true;
 
         editor.levelTiles = decodeTileRanges(levelGfx.layer12, editor.rom, 32);
-        
         editor.levelTileMap = makeTileMap(editor.levelTiles, 16, 1);
 
         editor.checkpointData = loadCheckpoints(editor.rom, level.midpoint_start_y);
-
-        std::vector<MetaTileData> levelMetaTileData;
 
         if (editor.mode)
         {
@@ -954,107 +1267,130 @@ void App::drawTilesetWindow()
 
             editor.layer2TileData = loadBackgroundTileData(editor.rom, level.bg_tilemap, 0x1000);
             editor.layer3TileData = loadBackgroundTileData(editor.rom, level.bg_tilemap + 0x1000, 0x1000);
-            levelMetaTileData = decodeMetaTile32SNES(editor.rom, level.chip32x32, level.collision, 0x400);
+
+            auto meta = decodeMetaTile32SNES(editor.rom, level.chip32x32, level.collision, 0x400);
+
             editor.palettes = decodeCGRAMPalettes(editor.rom, level.palette_data, 16);
-            Palettes p = decodeCGRAMPalettes(editor.rom, level.palette_layer3, 2);
-            editor.palettes[0] = p[0];
-            editor.palettes[1] = p[1];
-            p = decodeCGRAMPalettes(editor.rom, level.palette_layer2, 2);
-            editor.palettes[6] = p[0];
-            editor.palettes[7] = p[1];
-            editor.animate = loadAnimatedPalettes(editor.rom, level.palette_afc, level.palette_aft, level.palette_anime, editor.isHiROM, editor.palettes);
-            if ((editor.animate.palette_bits & 0x30) != 0x30)
+
+            auto p3 = decodeCGRAMPalettes(editor.rom, level.palette_layer3, 2);
+            editor.palettes[0] = p3[0];
+            editor.palettes[1] = p3[1];
+
+            auto p2 = decodeCGRAMPalettes(editor.rom, level.palette_layer2, 2);
+            editor.palettes[6] = p2[0];
+            editor.palettes[7] = p2[1];
+
+            editor.animate = loadAnimatedPalettes(
+                editor.rom,
+                level.palette_afc,
+                level.palette_aft,
+                level.palette_anime,
+                editor.isHiROM,
+                editor.palettes
+            );
+
+            if ((editor.animate.palette_bits & 0x30) != 0x30 && editor.animate.frame_count)
             {
-                if (editor.animate.frame_count)
+                editor.animate.palette_bits |= 0x30;
+                for (int i = 0; i < editor.animate.frame_count; ++i)
                 {
-                    editor.animate.palette_bits |= 0x30;
-                    for (int i = 0; i < editor.animate.frame_count; ++i)
-                    {
-                        int base = i * 6;
-                        editor.animate.frames[base + 4] = p[0];
-                        editor.animate.frames[base + 5] = p[1];
-                        editor.animate.palette_bits |= 0x30;
-                    }
+                    int base = i * 6;
+                    editor.animate.frames[base + 4] = p2[0];
+                    editor.animate.frames[base + 5] = p2[1];
                 }
             }
 
+            writeAnimatedPalettes(editor.rom, level.palette_anime, editor.isHiROM, editor.animate);
+
             editor.bgScrollData = loadBackgroundScrollData(editor.rom, level.bg_scroll);
-            editor.bgPositionData[0] = loadBGPositionData(editor.rom, level.bg_start);
-            editor.bgPositionData[1] = loadBGPositionData(editor.rom, level.bg_checkpoint);
-            editor.bgPositionData[2] = loadBGPositionData(editor.rom, level.bg_boss);
-
+            editor.bgPositionData = loadBGPositionData(editor.rom, level.bg_start);
             editor.bgTilemapMirror = loadBGTilemapMirror(editor.rom, level.bg_mirror);
-
             editor.bgScrollSpeeds = loadBGScrollSpeeds(editor.rom, level.bg_speed);
+
+            loadMetaTilePalettes(meta, editor.rom, level.chip32x32_palette, 0x100);
+
+            editor.levelMacroTiles = buildMacroTiles(editor.levelTileMap);
+            editor.levelMetaTiles = makeMetaTiles(meta, editor.levelMacroTiles);
         }
         else
         {
-            levelMetaTileData = decodeMetaTile32NES(editor.rom, level.chip32x32, 0x400);
+            auto meta = decodeMetaTile32NES(editor.rom, level.chip32x32, 0x400);
             editor.palettes = makeNESPalettes(editor.rom, level.palette_data, editor.nesMasterPalette);
-            editor.animate = loadAnimatedPalettesNES(editor.rom, level.palette_afc, level.palette_aft, level.palette_anime, editor.nesMasterPalette);
+            editor.animate = loadAnimatedPalettesNES(
+                editor.rom,
+                level.palette_afc,
+                level.palette_aft,
+                level.palette_anime,
+                editor.nesMasterPalette
+            );
+
+            loadMetaTilePalettes(meta, editor.rom, level.chip32x32_palette, 0x100);
+
+            editor.levelMacroTiles = buildMacroTiles(editor.levelTileMap);
+            editor.levelMetaTiles = makeMetaTiles(meta, editor.levelMacroTiles);
         }
 
-        loadMetaTilePalettes(levelMetaTileData, editor.rom, level.chip32x32_palette, 0x100);
-
-        editor.aniPalettes = editor.palettes;
-        if(editor.mode == 0)
-            editor.paletteIndex = 0;
-        else
-            editor.paletteIndex = 2;
-        editor.aniPalIndex = 0;
-
-        editor.subPalettes = editor.palettes;
-        editor.subPaletteIndex = 0;
-
-        editor.levelMacroTiles = buildMacroTiles(editor.levelTileMap);
-        editor.levelMetaTiles = makeMetaTiles(levelMetaTileData, editor.levelMacroTiles);
-
         editor.levelData = loadLevelData(editor.rom, level.map, 0xB00);
-        editor.scrollData = loadScrollData(editor.rom, level.scroll, 0x200);
+        editor.scrollData = loadScrollData(editor.rom, level.scroll);
         editor.levelData = remapColumnMajorScreensHorizontally(editor.levelData);
 
         editor.enemyData = loadObjectData(editor.rom, level.enemy_screen, level.enemy_x, level.enemy_y, level.enemy_type, 0x100);
         editor.itemData = loadObjectData(editor.rom, level.item_screen, level.item_x, level.item_y, level.item_type, 0x40);
 
-        size_t si = editor.levelData.size();
-        editor.screenCount = si / 64;
+        editor.screenCount = editor.levelData.size() / 64;
+
+        editor.aniPalettes = editor.palettes;
+        editor.paletteIndex = (editor.mode == 0 ? 0 : 2);
+        editor.aniPalIndex = 0;
+
+        editor.subPalettes = editor.palettes;
+        editor.subPaletteIndex = 0;
     }
+
     static std::string label = "Tileset for " + levelName;
-    const char* tabNames[] = { "Tile Editor", "Level Editor", "Collision Editor", "Background Layer 2 Editor", "Background Layer 3 Editor"};
+    const char* tabNames[] = {
+        "Tile Editor",
+        "Level Editor",
+        "Collision Editor",
+        "Background Layer 2 Editor",
+        "Background Layer 3 Editor"
+    };
+
     if (ImGui::BeginCombo("Editor Mode", tabNames[editor.tileViewMode]))
     {
-        int tabsize = editor.mode == 0 ? 3 : 5;
-        for (int i = 0; i < tabsize; ++i)
+        int tabCount = (editor.mode == 0 ? 3 : 5);
+
+        for (int i = 0; i < tabCount; ++i)
         {
             bool selected = (i == editor.tileViewMode);
             if (ImGui::Selectable(tabNames[i], selected))
             {
                 editor.tileViewMode = static_cast<ViewMode>(i);
                 editor.selectedTile = -1;
+
                 switch (editor.tileViewMode)
                 {
-                    case VM_Tileset:
-                        label = "Tileset for " + levelName;
-                        editor.editMode = EM_Metatiles;
-                        break;
-                    case VM_Metatiles:
-                        label = "Meta Tiles for " + levelName;
-                        editor.editMode = EM_Level;
-                        break;
-                    case VM_Collision:
-                        editor.editMode = EM_Collision;
-                        break;
-                    case VM_Layer2:
-                        label = "Tileset for " + levelName;
-                        editor.editMode = EM_Layer2;
-                        break;
-                    case VM_Layer3:
-                        label = "Tileset for " + levelName;
-                        editor.editMode = EM_Layer3;
-                        break;
-                    default:
-                        break;
+                case VM_Tileset:
+                    label = "Tileset for " + levelName;
+                    editor.editMode = EM_Metatiles;
+                    break;
+                case VM_Metatiles:
+                    label = "Meta Tiles for " + levelName;
+                    editor.editMode = EM_Level;
+                    break;
+                case VM_Collision:
+                    editor.editMode = EM_Collision;
+                    break;
+                case VM_Layer2:
+                    label = "Tileset for " + levelName;
+                    editor.editMode = EM_Layer2;
+                    break;
+                case VM_Layer3:
+                    label = "Tileset for " + levelName;
+                    editor.editMode = EM_Layer3;
+                    break;
                 }
+
                 editor.rebuildBackgrounds = true;
                 editor.rebuildEdit = true;
                 editor.rebuildView = true;
@@ -1063,7 +1399,7 @@ void App::drawTilesetWindow()
         }
         ImGui::EndCombo();
     }
-    
+
     if (editor.tileViewMode != VM_Collision)
     {
         ImGui::SeparatorText(label.c_str());
@@ -1078,8 +1414,7 @@ void App::drawTilesetWindow()
         {
             ImGui::PushID(ct.id);
 
-            ImVec4 col = ColorU32ToVec4(ct.color);
-            ImGui::ColorButton("##col", col, 0, ImVec2(20, 20));
+            ImGui::ColorButton("##col", ColorU32ToVec4(ct.color), 0, ImVec2(20, 20));
             ImGui::SameLine();
 
             if (ImGui::Selectable(ct.name, editor.selectedTile == ct.id))
@@ -1094,38 +1429,59 @@ void App::drawTilesetWindow()
 
 void App::applyAnimationFrame()
 {
-    if (editor.animate.frames.empty()) return;
+    const auto& frames = editor.animate.frames;
+    if (frames.empty())
+        return;
 
-    uint8_t amount = editor.mode == 0 ? 4 : 6;
-    uint8_t offset = editor.mode == 0 ? 0 : 2;
-    std::copy_n(editor.animate.frames.begin() + (editor.animFrame * amount), amount, editor.aniPalettes.begin() + offset);
+    const uint8_t amount = (editor.mode == 0 ? 4 : 6);
+    const uint8_t offset = (editor.mode == 0 ? 0 : 2);
+
+    const size_t index = static_cast<size_t>(editor.animFrame) * amount;
+    if (index + amount > frames.size())
+        return;
+
+    std::copy_n(frames.begin() + index, amount, editor.aniPalettes.begin() + offset);
 }
 
 void App::updatePaletteAnimation()
 {
-    if (editor.animate.frame_count == 0 || editor.animate.frame_timer == 0 || !editor.animatePalettes)
+    const auto& anim = editor.animate;
+
+    if (anim.frame_count == 0 || anim.frame_timer == 0 || !editor.animatePalettes)
         return;
 
-    if (--editor.animTimer <= 0)
-    {
-        editor.animTimer = editor.animate.frame_timer;
-        editor.animFrame++;
+    if (--editor.animTimer > 0)
+        return;
 
-        if (editor.animFrame >= editor.animate.frame_count)
-            editor.animFrame = 0;
+    editor.animTimer = anim.frame_timer;
 
-        applyAnimationFrame();
+    editor.animFrame++;
+    if (editor.animFrame >= anim.frame_count)
+        editor.animFrame = 0;
 
-        editor.rebuildTileset = true;
-        editor.rebuildBackgrounds = true;
-        editor.rebuildEdit = true;
-        editor.rebuildView = true;
-    }
+    applyAnimationFrame();
+
+    editor.rebuildTileset = true;
+    editor.rebuildBackgrounds = true;
+    editor.rebuildEdit = true;
+    editor.rebuildView = true;
 }
 
-void App::DrawColorButton(const std::string& id, ColorRGBA& col, const PaletteType type, size_t paletteIndex, int colorIndex, const char* popupName, const LevelEntry& level, ImVec2 size)
+void App::DrawColorButton(const std::string& id,
+    ColorRGBA& col,
+    PaletteType type,
+    size_t paletteIndex,
+    int colorIndex,
+    const char* popupName,
+    const LevelEntry& level,
+    ImVec2 size)
 {
-    ImVec4 c(col.r / 255.f, col.g / 255.f, col.b / 255.f, 1.f);
+    ImVec4 c{
+        col.r * (1.f / 255.f),
+        col.g * (1.f / 255.f),
+        col.b * (1.f / 255.f),
+        1.f
+    };
 
     if (ImGui::ColorButton(id.c_str(), c, 0, size))
     {
@@ -1133,6 +1489,7 @@ void App::DrawColorButton(const std::string& id, ColorRGBA& col, const PaletteTy
         editor.editingColor = colorIndex;
         editor.tempColor = col;
         editor.paletteType = type;
+
         ImGui::OpenPopup(popupName);
     }
 
@@ -1150,20 +1507,22 @@ void App::DrawColorButton(const std::string& id, ColorRGBA& col, const PaletteTy
             editor.editingColor = colorIndex;
             editor.paletteType = type;
             editor.tempColor = editor.colClip.color;
+
             if (editor.mode == 0)
                 writeNESColorToROM(level, -1);
             else
                 writeSNESColorToROM(level);
-            
         }
 
         if (ImGui::MenuItem("Swap With Clipboard", nullptr, false, editor.colClip.hasData))
         {
             std::swap(col, editor.colClip.color);
+
             editor.editingPalette = paletteIndex;
             editor.editingColor = colorIndex;
             editor.tempColor = col;
             editor.paletteType = type;
+
             if (editor.mode == 0)
                 writeNESColorToROM(level, -1);
             else
@@ -1176,13 +1535,19 @@ void App::DrawColorButton(const std::string& id, ColorRGBA& col, const PaletteTy
     ImGui::SameLine();
 }
 
-void App::DrawPaletteRow(const char* label, size_t index, Palette& pal, int colorsPerPalette, const PaletteType type, const char* popupName, const char* ident, const LevelEntry& level)
+void App::DrawPaletteRow(const char* label,
+    size_t index,
+    Palette& pal,
+    int colorsPerPalette,
+    PaletteType type,
+    const char* popupName,
+    const char* ident,
+    const LevelEntry& level)
 {
-    std::string id = label;
-    id += " " + std::to_string(index);
-    std::string popupId = id + "_popup";
+    std::string rowId = std::string(label) + " " + std::to_string(index);
+    std::string popupId = rowId + "_popup";
 
-    if (ImGui::Button(id.c_str()))
+    if (ImGui::Button(rowId.c_str()))
         ImGui::OpenPopup(popupId.c_str());
 
     if (ImGui::BeginPopup(popupId.c_str()))
@@ -1197,6 +1562,7 @@ void App::DrawPaletteRow(const char* label, size_t index, Palette& pal, int colo
         {
             pal = editor.palClip.colors;
             editor.paletteType = type;
+
             if (editor.mode == 0)
                 writeNESPaletteToROM(index, pal, level);
             else
@@ -1207,6 +1573,7 @@ void App::DrawPaletteRow(const char* label, size_t index, Palette& pal, int colo
         {
             std::swap(pal, editor.palClip.colors);
             editor.paletteType = type;
+
             if (editor.mode == 0)
                 writeNESPaletteToROM(index, pal, level);
             else
@@ -1216,88 +1583,144 @@ void App::DrawPaletteRow(const char* label, size_t index, Palette& pal, int colo
         ImGui::EndPopup();
     }
 
+    const ImVec2 btnSize = (colorsPerPalette == 16 ? ImVec2(20, 20) : ImVec2(0, 0));
+
     for (int i = 0; i < colorsPerPalette; ++i)
     {
-        id = std::string(ident) + "_" + std::to_string(index) + "_" + std::to_string(i);
+        std::string colorId;
+        colorId.reserve(32);
+        colorId.append(ident)
+            .append("_")
+            .append(std::to_string(index))
+            .append("_")
+            .append(std::to_string(i));
 
-        DrawColorButton(id, pal[i], type, index, i, popupName, level, colorsPerPalette == 16 ? ImVec2(20, 20) : ImVec2(0, 0));
+        DrawColorButton(colorId, pal[i], type, index, i, popupName, level, btnSize);
     }
 
     ImGui::NewLine();
 }
 
-void App::DrawAllPalettes(int colorsPerPalette, const char* popupName, const LevelEntry& level)
+void App::DrawAllPalettes(int colorsPerPalette,
+    const char* popupName,
+    const LevelEntry& level)
 {
-    size_t half = editor.mode == 0 ? (editor.palettes.size() / 4) : (editor.palettes.size() / 2);
+    const size_t paletteCount = editor.palettes.size();
 
-    for (size_t p = 0; p < half * 2; ++p)
+    // NES MODE: L1 and SPR
+    if (editor.mode == 0)
     {
+        // NES palette layout:
+        // 0–1 = L1
+        // 2–3 = SPR
+        static const struct {
+            const char* label;
+            const char* id;
+            PaletteType type;
+            size_t start;
+            size_t end;
+        } nesGroups[] = {
+            { "L1 Palette",  "L1",  PT_Normal, 0, 2 },
+            { "SPR Palette", "SPR", PT_Normal, 2, 4 }
+        };
+
+        for (const auto& g : nesGroups)
+        {
+            for (size_t i = g.start; i < g.end; ++i)
+            {
+                DrawPaletteRow(g.label,
+                    i,
+                    editor.palettes[i],
+                    colorsPerPalette,
+                    g.type,
+                    popupName,
+                    g.id,
+                    level);
+            }
+        }
+
+        return;
+    }
+
+    // SNES MODE: L3, L1, L2, SPR
+    static const struct {
         const char* label;
         const char* id;
-        PaletteType type = PT_Normal;
+        PaletteType type;
+        size_t start;
+        size_t count;
+    } snesGroups[] = {
+        { "L3 Palette",  "L3",  PT_Layer3, 0, 2 },
+        { "L1 Palette",  "L1",  PT_Normal, 2, 6 },
+        { "L2 Palette",  "L2",  PT_Layer2, 6, 8 },
+        { "SPR Palette", "SPR", PT_Normal, 8, 16}
+    };
 
-        if (p < 2)
+    for (const auto& g : snesGroups)
+    {
+        for (size_t i = g.start; i < g.count; ++i)
         {
-            label = "L3 Palette";
-            id = "L3";
-            type = PT_Layer3;
+            DrawPaletteRow(g.label,
+                i,
+                editor.palettes[i],
+                colorsPerPalette,
+                g.type,
+                popupName,
+                g.id,
+                level);
         }
-        else if (p < 6)
-        {
-            label = "L1 Palette";
-            id = "L1";
-        }
-        else if (p < 8)
-        {
-            label = "L2 Palette";
-            id = "L2";
-            type = PT_Layer2;
-        }
-        else
-        {
-            label = "SPR Palette";
-            id = "SPR";
-        }
-
-        size_t index = (p < half) ? p : p - half;
-
-        DrawPaletteRow(label, index, editor.palettes[p], colorsPerPalette, type, popupName, id, level);
     }
 }
 
-void App::DrawAnimatedPalettes(int colorsPerPalette, int colorsPerFrame, const char* popupName, const LevelEntry& level)
+void App::DrawAnimatedPalettes(int colorsPerPalette,
+    int colorsPerFrame,
+    const char* popupName,
+    const LevelEntry& level)
 {
-    float newWidth = ImGui::GetContentRegionAvail().x * 0.20f;
-    ImGui::PushItemWidth(newWidth);
-    int frameCount = editor.animate.frame_count;
     ImGui::SeparatorText("Palette Animation");
 
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.20f);
+
+    int frameCount = editor.animate.frame_count;
     if (ImGui::InputInt("Frame Count", &frameCount))
     {
         frameCount = std::clamp(frameCount, 0, 4);
         editor.animate.frame_count = frameCount;
-        editor.rom[level.palette_afc] = frameCount;
-        editor.animate = loadAnimatedPalettes(editor.rom, level.palette_afc, level.palette_aft, level.palette_anime, editor.isHiROM, editor.palettes);
-        if (editor.mode != 0)
+
+        MemoryDelta mem;
+        mem.address = level.palette_afc;
+        mem.oldData.push_back(editor.rom[level.palette_afc]);
+        mem.newData.push_back(uint8_t(frameCount));
+        saveROMData(mem);
+
+        editor.animate = loadAnimatedPalettes(
+            editor.rom,
+            level.palette_afc,
+            level.palette_aft,
+            level.palette_anime,
+            editor.isHiROM,
+            editor.palettes
+        );
+
+        if (editor.mode != 0 && frameCount > 0)
         {
             if ((editor.animate.palette_bits & 0x30) != 0x30)
             {
-                if (editor.animate.frame_count)
+                editor.animate.palette_bits |= 0x30;
+
+                auto p2 = decodeCGRAMPalettes(editor.rom, level.palette_layer2, 2);
+                for (int i = 0; i < frameCount; ++i)
                 {
-                    editor.animate.palette_bits |= 0x30;
-                    Palettes p = decodeCGRAMPalettes(editor.rom, level.palette_layer2, 2);
-                    for (int i = 0; i < editor.animate.frame_count; ++i)
-                    {
-                        int base = i * 6;
-                        editor.animate.frames[base + 4] = p[0];
-                        editor.animate.frames[base + 5] = p[1];
-                    }
+                    int base = i * 6;
+                    editor.animate.frames[base + 4] = p2[0];
+                    editor.animate.frames[base + 5] = p2[1];
                 }
             }
         }
+        writeAnimatedPalettes(editor.rom, level.palette_anime, editor.isHiROM, editor.animate);
     }
 
-    ImGui::SameLine();
+    ImGui::PopItemWidth();
 
     if (frameCount == 0)
         return;
@@ -1306,12 +1729,15 @@ void App::DrawAnimatedPalettes(int colorsPerPalette, int colorsPerFrame, const c
     if (ImGui::InputInt("Frame Timer", &frameTimer))
     {
         editor.animate.frame_timer = std::clamp(frameTimer, 0, 255);
-        editor.rom[level.palette_aft] = editor.animate.frame_timer;
+
+        MemoryDelta mem;
+        mem.address = level.palette_aft;
+        mem.oldData.push_back(editor.rom[level.palette_aft]);
+        mem.newData.push_back(editor.animate.frame_timer);
+        saveROMData(mem);
     }
 
-    ImGui::PopItemWidth();
-
-    bool changed = false;
+    bool changedFrame = false;
     if (ImGui::BeginCombo("Frame", std::to_string(editor.aniPalIndex).c_str()))
     {
         for (int i = 0; i < frameCount; ++i)
@@ -1320,29 +1746,39 @@ void App::DrawAnimatedPalettes(int colorsPerPalette, int colorsPerFrame, const c
             if (ImGui::Selectable(std::to_string(i).c_str(), selected))
             {
                 editor.aniPalIndex = i;
-                changed = true;
+                changedFrame = true;
             }
         }
         ImGui::EndCombo();
     }
 
-    bool checked = ImGui::Checkbox("Animate Palettes", &editor.animatePalettes);
+    bool toggled = ImGui::Checkbox("Animate Palettes", &editor.animatePalettes);
 
-    if ((checked || changed) && !editor.animatePalettes)
+    if ((toggled || changedFrame) && !editor.animatePalettes)
     {
         editor.animFrame = editor.aniPalIndex;
         applyAnimationFrame();
+
         editor.rebuildTileset = true;
         editor.rebuildBackgrounds = true;
         editor.rebuildEdit = true;
         editor.rebuildView = true;
     }
 
-    size_t start = editor.aniPalIndex * colorsPerFrame;
-    size_t end = start + colorsPerFrame;
+    const size_t start = editor.aniPalIndex * colorsPerFrame;
+    const size_t end = std::min(start + colorsPerFrame, editor.animate.frames.size());
 
-    for (size_t p = start; p < end && p < editor.animate.frames.size(); ++p)
-        DrawPaletteRow("ANI Palette", p, editor.animate.frames[p], colorsPerPalette, PT_Animated, popupName, "ANI", level);
+    for (size_t p = start; p < end; ++p)
+    {
+        DrawPaletteRow("ANI Palette",
+            p,
+            editor.animate.frames[p],
+            colorsPerPalette,
+            PT_Animated,
+            popupName,
+            "ANI",
+            level);
+    }
 }
 
 void App::DrawNESPopup(const LevelEntry& level)
@@ -1355,15 +1791,23 @@ void App::DrawNESPopup(const LevelEntry& level)
     for (int i = 0; i < 64; ++i)
     {
         const auto& c = editor.nesMasterPalette[i];
-        ImVec4 col(c.r / 255.f, c.g / 255.f, c.b / 255.f, 1.f);
 
-        std::string id = "nescol_" + std::to_string(i);
+        ImVec4 col{
+            c.r * (1.f / 255.f),
+            c.g * (1.f / 255.f),
+            c.b * (1.f / 255.f),
+            1.f
+        };
 
-        if (ImGui::ColorButton(id.c_str(), col, 0, ImVec2(20, 20)))
+        ImGui::PushID(i);
+
+        if (ImGui::ColorButton("##nescol", col, 0, ImVec2(20, 20)))
         {
             writeNESColorToROM(level, i);
             ImGui::CloseCurrentPopup();
         }
+
+        ImGui::PopID();
 
         if ((i % 16) != 15)
             ImGui::SameLine();
@@ -1379,17 +1823,18 @@ void App::DrawSNESPopup(const LevelEntry& level)
 
     ImGui::Text("Edit SNES 15-bit Color");
 
-    ImVec4 col(editor.tempColor.r / 255.f,
-        editor.tempColor.g / 255.f,
-        editor.tempColor.b / 255.f, 1.f);
+    ImVec4 col{
+        editor.tempColor.r * (1.f / 255.f),
+        editor.tempColor.g * (1.f / 255.f),
+        editor.tempColor.b * (1.f / 255.f),
+        1.f
+    };
 
     if (ImGui::ColorPicker3("Color", (float*)&col))
     {
-        editor.tempColor = {
-            uint8_t(col.x * 255),
-            uint8_t(col.y * 255),
-            uint8_t(col.z * 255)
-        };
+        editor.tempColor.r = static_cast<uint8_t>(col.x * 255.f);
+        editor.tempColor.g = static_cast<uint8_t>(col.y * 255.f);
+        editor.tempColor.b = static_cast<uint8_t>(col.z * 255.f);
     }
 
     if (ImGui::Button("Apply"))
@@ -1408,25 +1853,29 @@ void App::DrawSNESPopup(const LevelEntry& level)
 
 int App::findNESIndexFromRGBA(const ColorRGBA& col)
 {
-    int best = 0;
+    int bestIndex = 0;
     int bestDist = INT_MAX;
+
+    const auto& master = editor.nesMasterPalette;
 
     for (int i = 0; i < 64; ++i)
     {
-        const auto& m = editor.nesMasterPalette[i];
-        int dr = int(m.r) - col.r;
-        int dg = int(m.g) - col.g;
-        int db = int(m.b) - col.b;
-        int dist = dr * dr + dg * dg + db * db;
+        const auto& m = master[i];
+
+        const int dr = int(m.r) - col.r;
+        const int dg = int(m.g) - col.g;
+        const int db = int(m.b) - col.b;
+
+        const int dist = dr * dr + dg * dg + db * db;
 
         if (dist < bestDist)
         {
             bestDist = dist;
-            best = i;
+            bestIndex = i;
         }
     }
 
-    return best;
+    return bestIndex;
 }
 
 void App::writeNESColorToROM(const LevelEntry& level, int index)
@@ -1434,28 +1883,19 @@ void App::writeNESColorToROM(const LevelEntry& level, int index)
     if (index < 0)
         index = findNESIndexFromRGBA(editor.tempColor);
 
-    uint32_t base = level.palette_data;
-    switch (editor.paletteType)
-    {
-        case PT_Animated:
-            base = level.palette_anime;
-            break;
-    }
+    bool animated = (editor.paletteType == PT_Animated);
+
+    uint32_t base = animated
+        ? level.palette_anime
+        : level.palette_data;
 
     uint32_t addr = base + editor.editingPalette * 4 + editor.editingColor;
 
-    editor.rom[addr] = index;
-
-    switch (editor.paletteType)
-    {
-        case PT_Animated:
-            editor.palettes = makeNESPalettes(editor.rom, base, editor.nesMasterPalette);
-            editor.aniPalettes = editor.palettes;
-            break;
-        case PT_Normal:
-            editor.animate = loadAnimatedPalettesNES(editor.rom, level.palette_afc, level.palette_aft, level.palette_anime, editor.nesMasterPalette);
-            break;
-    }
+    MemoryDelta mem;
+    mem.address = addr;
+    mem.oldData.push_back(editor.rom[addr]);
+    mem.newData.push_back(uint8_t(index));
+    saveROMData(mem);
 
     applyAnimationFrame();
 
@@ -1467,67 +1907,69 @@ void App::writeNESColorToROM(const LevelEntry& level, int index)
 
 void App::writeSNESColorToROM(const LevelEntry& level)
 {
+    uint32_t base = 0;
     switch (editor.paletteType)
     {
-        case PT_Animated:
-            editor.animate.frames[editor.editingPalette][editor.editingColor] = editor.tempColor;
-            writeAnimatedPalettes(editor.rom, level.palette_anime, editor.isHiROM, editor.animate);
-            editor.animate = loadAnimatedPalettes(editor.rom, level.palette_afc, level.palette_aft, level.palette_anime, editor.isHiROM, editor.palettes);
-            break;
-        case PT_Layer2: {
-            uint32_t base = level.palette_layer2;
-            uint32_t offset = editor.editingPalette == 7 ? 1 : 0;
-            uint32_t addr = base + (offset * 16 + editor.editingColor) * 2;
+    case PT_Layer2:
+        base = level.palette_layer2;
+        break;
 
-            writeSNESColor(editor.rom, addr, editor.tempColor);
+    case PT_Layer3:
+        base = level.palette_layer3;
+        break;
 
-            Palettes p = decodeCGRAMPalettes(editor.rom, base, 2);
-            editor.palettes[6] = p[0];
-            editor.palettes[7] = p[1];
-            break;
-        }
-        case PT_Layer3: {
-            uint32_t base = level.palette_layer3;
-            uint32_t addr = base + (editor.editingPalette * 16 + editor.editingColor) * 2;
-
-            writeSNESColor(editor.rom, addr, editor.tempColor);
-
-            Palettes p = decodeCGRAMPalettes(editor.rom, base, 2);
-            editor.palettes[0] = p[0];
-            editor.palettes[1] = p[1];
-            for (int p = 0; p < 2; ++p)
-            {
-                for (int chunk = 0; chunk < 8; ++chunk)
-                {
-                    int dstIndex = p * 8 + chunk;
-                    int offset = chunk * 4;
-
-                    for (int c = 0; c < 4; ++c)
-                    {
-                        editor.subPalettes[dstIndex][c] = editor.palettes[p][offset + c];
-                    }
-                }
-            }
-            break;
-        }
-        case PT_Normal: {
-            uint32_t base = level.palette_data;
-            uint32_t addr = base + (editor.editingPalette * 16 + editor.editingColor) * 2;
-
-            writeSNESColor(editor.rom, addr, editor.tempColor);
-
-            editor.palettes = decodeCGRAMPalettes(editor.rom, base, 16);
-            Palettes p = decodeCGRAMPalettes(editor.rom, level.palette_layer3, 2);
-            editor.palettes[0] = p[0];
-            editor.palettes[1] = p[1];
-            p = decodeCGRAMPalettes(editor.rom, level.palette_layer2, 2);
-            editor.palettes[6] = p[0];
-            editor.palettes[7] = p[1];
-            break;
-        }
+    case PT_Normal:
+        base = level.palette_data;
+        break;
     }
 
-    editor.aniPalettes = editor.palettes;
+    if (editor.paletteType != PT_Animated)
+    {
+        editor.palettes[editor.editingPalette][editor.editingColor] = editor.tempColor;
+        uint32_t palOffset = editor.editingPalette << 5;   // palette * 32 bytes
+        uint32_t colOffset = editor.editingColor << 1;    // color * 2 bytes
+        uint32_t addr = base + palOffset + colOffset;
+        if (editor.paletteType == PT_Layer2)
+        {
+            uint32_t offset = (editor.editingPalette == 7 ? 1 : 0);
+            addr = base + ((offset << 5) + colOffset);
+        }
+
+        MemoryDelta mem = writeSNESColor(editor.rom, addr, editor.tempColor);
+        saveROMData(mem);
+    }
+    else
+    {
+        DataChanged data = writeAnimatedColor(
+            editor.rom,
+            level.palette_anime,
+            editor.isHiROM,
+            editor.animate,
+            editor.editingPalette,
+            editor.editingColor,
+            editor.tempColor
+        );
+        saveROMData(data);
+    }
+
+    switch (editor.paletteType)
+    {
+    case PT_Layer3:
+    {
+        for (int pal = 0; pal < 2; ++pal)
+        {
+            for (int chunk = 0; chunk < 4; ++chunk)
+            {
+                int dstIndex = pal * 4 + chunk;
+                int srcOffset = chunk * 4;
+
+                for (int c = 0; c < 4; ++c)
+                    editor.subPalettes[dstIndex][c] = editor.palettes[pal][srcOffset + c];
+            }
+        }
+        break;
+    }
+    }
 
     applyAnimationFrame();
 
@@ -1537,25 +1979,27 @@ void App::writeSNESColorToROM(const LevelEntry& level)
     editor.rebuildView = true;
 }
 
-void App::writeNESPaletteToROM(size_t paletteIndex, const Palette& pal, const LevelEntry& level)
+void App::writeNESPaletteToROM(size_t paletteIndex,
+    const Palette& pal,
+    const LevelEntry& level)
 {
-    uint32_t base = level.palette_data;
-    switch (editor.paletteType)
-    {
-        case PT_Animated:
-            base = level.palette_anime;
-            break;
-    }
+    uint32_t base = (editor.paletteType == PT_Animated)
+        ? level.palette_anime
+        : level.palette_data;
+
+    uint32_t addr = base + (paletteIndex << 2); // paletteIndex * 4
+
+    MemoryDelta mem;
+    mem.address = addr;
 
     for (int i = 0; i < 4; ++i)
     {
-        int nesIndex = findNESIndexFromRGBA(pal[i]);
-        uint32_t addr = base + paletteIndex * 4 + i;
-        editor.rom[addr] = uint8_t(nesIndex);
+        uint8_t nesIndex = uint8_t(findNESIndexFromRGBA(pal[i]));
+        mem.newData.push_back(nesIndex);
+        mem.oldData.push_back(editor.rom[addr + i]);
     }
 
-    editor.palettes = makeNESPalettes(editor.rom, base, editor.nesMasterPalette);
-    editor.aniPalettes = editor.palettes;
+    saveROMData(mem);
 
     applyAnimationFrame();
 
@@ -1565,76 +2009,61 @@ void App::writeNESPaletteToROM(size_t paletteIndex, const Palette& pal, const Le
     editor.rebuildView = true;
 }
 
-void App::writeSNESPaletteToROM(size_t paletteIndex, const Palette& pal, const LevelEntry& level)
+void App::writeSNESPaletteToROM(size_t paletteIndex,
+    const Palette& pal,
+    const LevelEntry& level)
 {
-    switch(editor.paletteType)
+    DataChanged data;
+    if (editor.paletteType == PT_Animated)
     {
-        case PT_Animated:
-            editor.animate.frames[paletteIndex] = pal;
-            writeAnimatedPalettes(editor.rom, level.palette_anime, editor.isHiROM, editor.animate);
-            editor.animate = loadAnimatedPalettes(editor.rom, level.palette_afc, level.palette_aft, level.palette_anime, editor.isHiROM, editor.palettes);
-            break;
-        case PT_Layer2: {
-            uint32_t base = level.palette_layer2;
-            uint32_t offset = paletteIndex == 7 ? 1 : 0;
+        data = writeAnimatedPalette(
+            editor.rom,
+            level.palette_anime,
+            editor.isHiROM,
+            editor.animate,
+            paletteIndex,
+            pal
+        );
+        saveROMData(data);
+    }
+    else
+    {
+        editor.palettes[paletteIndex] = pal;
+        uint32_t base =
+            (editor.paletteType == PT_Layer2) ? level.palette_layer2 :
+            (editor.paletteType == PT_Layer3) ? level.palette_layer3 :
+            level.palette_data;
 
-            for (int i = 0; i < 16; ++i)
-            {
-                uint32_t addr = base + (offset * 16 + i) * 2;
-                writeSNESColor(editor.rom, addr, pal[i]);
-            }
+        uint32_t palBlock =
+            (editor.paletteType == PT_Layer2)
+            ? ((paletteIndex == 7) ? 1 : 0)
+            : paletteIndex;
 
-            Palettes p = decodeCGRAMPalettes(editor.rom, base, 2);
-            editor.palettes[6] = p[0];
-            editor.palettes[7] = p[1];
-            break;
+        for (int i = 0; i < 16; ++i)
+        {
+            uint32_t addr = base + ((palBlock << 4) + i) * 2;
+            MemoryDelta mem = writeSNESColor(editor.rom, addr, pal[i]);
+            data.deltas.push_back(mem);
         }
-        case PT_Layer3: {
-            uint32_t base = level.palette_layer3;
 
-            for (int i = 0; i < 16; ++i)
-            {
-                uint32_t addr = base + (paletteIndex * 16 + i) * 2;
-                writeSNESColor(editor.rom, addr, pal[i]);
-            }
+        saveROMData(data);
 
-            Palettes p = decodeCGRAMPalettes(editor.rom, base, 2);
-            editor.palettes[0] = p[0];
-            editor.palettes[1] = p[1];
-            for (int p = 0; p < 2; ++p)
+        if (editor.paletteType == PT_Layer3)
+        {
+            for (int pal = 0; pal < 2; ++pal)
             {
                 for (int chunk = 0; chunk < 8; ++chunk)
                 {
-                    int dstIndex = p * 8 + chunk;
-                    int offset = chunk * 4;
+                    int dstIndex = pal * 8 + chunk;
+                    int srcOffset = chunk * 4;
 
                     for (int c = 0; c < 4; ++c)
-                    {
-                        editor.subPalettes[dstIndex][c] = editor.palettes[p][offset + c];
-                    }
+                        editor.subPalettes[dstIndex][c] =
+                        editor.palettes[pal][srcOffset + c];
                 }
             }
-            break;
-        }
-        case PT_Normal: {
-            uint32_t base = level.palette_data;
-            for (int i = 0; i < 16; ++i)
-            {
-                uint32_t addr = base + (paletteIndex * 16 + i) * 2;
-                writeSNESColor(editor.rom, addr, pal[i]);
-            }
-            editor.palettes = decodeCGRAMPalettes(editor.rom, base, 16);
-            Palettes p = decodeCGRAMPalettes(editor.rom, level.palette_layer3, 2);
-            editor.palettes[0] = p[0];
-            editor.palettes[1] = p[1];
-            p = decodeCGRAMPalettes(editor.rom, level.palette_layer2, 2);
-            editor.palettes[6] = p[0];
-            editor.palettes[7] = p[1];
-            break;
         }
     }
-
-    editor.aniPalettes = editor.palettes;
 
     applyAnimationFrame();
 
@@ -1646,66 +2075,68 @@ void App::writeSNESPaletteToROM(size_t paletteIndex, const Palette& pal, const L
 
 void App::drawPaletteWindow()
 {
-    ImGui::SetNextWindowSizeConstraints(
-        ImVec2(320, 240),
-        ImVec2(FLT_MAX, FLT_MAX)
-    );
+    ImGui::SetNextWindowSizeConstraints(ImVec2(320, 240), ImVec2(FLT_MAX, FLT_MAX));
     ImGui::Begin("Palettes", &open, ImGuiWindowFlags_HorizontalScrollbar);
-    
+
     ImGui::SeparatorText("CONTROLS");
     ImGui::Text("Left Click a color to change it");
     ImGui::Text("Left Click a palette name to copy, paste, or swap with clipboard");
     ImGui::Text("Up/Down Arrow increase/decrease BG Palette Index");
 
-    auto& names = editor.data[editor.mode].levelNames;
+    const auto& names = editor.data[editor.mode].levelNames;
     const std::string& levelName = names[editor.selectedLevel];
     const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
 
-    bool isNES = (editor.mode == 0);
+    const bool isNES = (editor.mode == 0);
 
     int offset = isNES ? 0 : 2;
     int colorsPerFrame = isNES ? 4 : 6;
+    int colorsPerPalette = isNES ? 4 : 16;
     int colorCount = 4 + offset;
+
     switch (editor.tileViewMode)
     {
-        case VM_Layer2:
-            colorCount = 8;
-            offset = 0;
-            break;
-        case VM_Layer3:
-            offset = 0;
-            colorCount = 2;
-            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  editor.subPaletteIndex--;
-            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) editor.subPaletteIndex++;
-            if (editor.subPaletteIndex > 3)
-                editor.subPaletteIndex = 3;
-            else if (editor.subPaletteIndex < 0)
-                editor.subPaletteIndex = 0;
-            ImGui::Text("Left/Right Arrow decrease/increase Sub-Palette Index");
-            break;
-        default:
-            break;
+    case VM_Layer2:
+        offset = 0;
+        colorCount = 8;
+        break;
+
+    case VM_Layer3:
+        offset = 0;
+        colorCount = 2;
+
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  editor.subPaletteIndex--;
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) editor.subPaletteIndex++;
+
+        editor.subPaletteIndex = std::clamp(editor.subPaletteIndex, 0, 3);
+
+        ImGui::Text("Left/Right Arrow decrease/increase Sub-Palette Index");
+        break;
+
+    default:
+        break;
     }
 
-    std::string label = "Palettes for ";
-    label += levelName;
+    ImGui::SeparatorText(("Palettes for " + levelName).c_str());
 
-    ImGui::SeparatorText(label.c_str());
+    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))\
+    {
+        editor.rebuildTileset = true;
+        editor.paletteIndex--;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))
+    {
+        editor.rebuildTileset = true;
+        editor.paletteIndex++;
+    }
 
-    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))  editor.paletteIndex--;
-    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) editor.paletteIndex++;
-
-    if (editor.paletteIndex < offset)
-        editor.paletteIndex = offset;
-    else if (editor.paletteIndex > colorCount - 1)
-        editor.paletteIndex = colorCount - 1;
+    editor.paletteIndex = std::clamp(editor.paletteIndex, offset, colorCount - 1);
 
     if (ImGui::BeginCombo("BG Palette Index", std::to_string(editor.paletteIndex).c_str()))
     {
         for (int i = offset; i < colorCount; ++i)
         {
             bool selected = (i == editor.paletteIndex);
-
             if (ImGui::Selectable(std::to_string(i).c_str(), selected))
             {
                 editor.paletteIndex = i;
@@ -1722,7 +2153,6 @@ void App::drawPaletteWindow()
             for (int i = 0; i < 4; ++i)
             {
                 bool selected = (i == editor.subPaletteIndex);
-
                 if (ImGui::Selectable(std::to_string(i).c_str(), selected))
                 {
                     editor.subPaletteIndex = i;
@@ -1741,8 +2171,6 @@ void App::drawPaletteWindow()
         editor.rebuildView = true;
     }
 
-    int colorsPerPalette = isNES ? 4 : 16;
-
     const char* popup = isNES ? "Pick NES Color" : "Edit SNES Color";
 
     DrawAllPalettes(colorsPerPalette, popup, level);
@@ -1760,82 +2188,91 @@ inline void DrawTextOutlined(ImDrawList* dl, ImVec2 pos, ImU32 colText, const ch
 {
     ImGui::SetWindowFontScale(zoom);
 
-    ImU32 colOutline = IM_COL32(255, 255, 255, 255);
+    const ImU32 colOutline = IM_COL32(255, 255, 255, 255);
 
-    dl->AddText(ImVec2(pos.x - 1, pos.y), colOutline, text);
-    dl->AddText(ImVec2(pos.x + 1, pos.y), colOutline, text);
-    dl->AddText(ImVec2(pos.x, pos.y - 1), colOutline, text);
-    dl->AddText(ImVec2(pos.x, pos.y + 1), colOutline, text);
+    static const ImVec2 offsets[4] = {
+        { -1,  0 },
+        {  1,  0 },
+        {  0, -1 },
+        {  0,  1 }
+    };
+
+    for (const ImVec2& o : offsets)
+        dl->AddText(ImVec2(pos.x + o.x, pos.y + o.y), colOutline, text);
 
     dl->AddText(pos, colText, text);
-    ImGui::SetWindowFontScale(1);
+
+    ImGui::SetWindowFontScale(1.0f);
 }
 
 void App::drawLevelWindow()
 {
-    ImGui::SetNextWindowSizeConstraints(
-        ImVec2(320, 240),
-        ImVec2(FLT_MAX, FLT_MAX)
-    );
+    ImGui::SetNextWindowSizeConstraints(ImVec2(320, 240), ImVec2(FLT_MAX, FLT_MAX));
     ImGui::Begin("Editor", &open, ImGuiWindowFlags_HorizontalScrollbar);
 
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow))
-    {
         editor.activeWindow = AW_Editor;
+
+    if (editor.editMode == EM_Level)
+    {
+        drawLevelView();
+        ImGui::End();
+        return;
     }
 
-    if (editor.editMode != EM_Level)
+    ImGui::SeparatorText("CONTROLS");
+    ImGui::Text("CTRL+= and CTRL+- Zooms in and out");
+    ImGui::Text("B toggles Paint Mode");
+
+    if (editor.editMode == EM_Collision)
     {
-        ImGui::SeparatorText("CONTROLS");
-        ImGui::Text("CTRL+= and CTRL+- Zooms in and out");
-        ImGui::Text("B to toggle Paint Mode");
-        if (editor.editMode == EM_Collision)
-        {
-            ImGui::Text("Hold Left Click to Paint with the Selected Collision Type");
-        }
-        else
-        {
-            ImGui::Text("Hold Left Click to Paint with the Selected Tile");
-            ImGui::Text("The selected Tile will use the currently Select Palette & Attributes");
-            ImGui::Text("Right Click to grab the currently hovered Tile");
-            ImGui::Text("Paint Mode makes Left Click only Paint with the currently Selected Palette & Attributes");
-            ImGui::Checkbox("Paint Mode", &editor.paintMode);
-            if (editor.editMode == EM_Layer2 || editor.editMode == EM_Layer3)
-            {
-                ImGui::Checkbox("Horizontal Flip", &editor.hFlip);
-                ImGui::SameLine();
-                ImGui::Checkbox("Vertical Flip", &editor.vFlip);
-                ImGui::SameLine();
-                ImGui::Checkbox("High Priority", &editor.hPriority);
-            }
-        }
-        ImGui::Separator();
-        drawEditMode();
+        ImGui::Text("Hold Left Click to Paint with the Selected Collision Type");
     }
     else
     {
-        drawLevelView();
+        ImGui::Text("Hold Left Click to Paint with the Selected Tile");
+        ImGui::Text("The selected Tile uses the currently Selected Palette & Attributes");
+        ImGui::Text("Right Click grabs the currently hovered Tile");
+        ImGui::Text("Paint Mode makes Left Click only Paint with the selected Palette & Attributes");
+
+        ImGui::Checkbox("Paint Mode", &editor.paintMode);
+
+        if (editor.editMode == EM_Layer2 || editor.editMode == EM_Layer3)
+        {
+            ImGui::Checkbox("Horizontal Flip", &editor.hFlip);
+            ImGui::SameLine();
+            ImGui::Checkbox("Vertical Flip", &editor.vFlip);
+            ImGui::SameLine();
+            ImGui::Checkbox("High Priority", &editor.hPriority);
+        }
     }
+
+    ImGui::Separator();
+    drawEditMode();
 
     ImGui::End();
 }
 
-inline void DrawNearestImage(ImDrawList* dl, const TilemapTexture& tileset, const ImVec2& size, const ImVec2& c1, const ImVec2& c2, const ImVec2 pos = ImVec2(-1, -1))
+inline void DrawNearestImage(ImDrawList* dl, const TilemapTexture& tileset, const ImVec2& size, const ImVec2& c1, const ImVec2& c2, const ImVec2& pos = ImVec2(-1, -1))
 {
-    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+    static ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
 
     dl->AddCallback(platform_io.DrawCallback_SetSamplerNearest, nullptr);
 
-    if (pos.x > -1)
+    const ImTextureID texID = (ImTextureID)(intptr_t)tileset.tex;
+
+    if (pos.x >= 0.0f)
     {
-        dl->AddImage((ImTextureID)(intptr_t)tileset.tex,
+        dl->AddImage(
+            texID,
             pos,
             ImVec2(pos.x + size.x, pos.y + size.y),
-            c1, c2);
+            c1, c2
+        );
     }
     else
     {
-        ImGui::Image((ImTextureID)(intptr_t)tileset.tex, size, c1, c2);
+        ImGui::Image(texID, size, c1, c2);
     }
 
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
@@ -1874,256 +2311,319 @@ void App::drawHeaderWindow()
 
 inline void GetTileUnderMouse(const ImVec2& min, int w, int h, int& outX, int& outY)
 {
-    ImVec2 mouse = ImGui::GetMousePos();
-    ImVec2 rel(mouse.x - min.x, mouse.y - min.y);
+    const ImVec2 mouse = ImGui::GetMousePos();
 
-    outX = static_cast<int>(rel.x / w);
-    outY = static_cast<int>(rel.y / h);
+    const float relX = std::max(0.0f, mouse.x - min.x);
+    const float relY = std::max(0.0f, mouse.y - min.y);
+
+    outX = static_cast<int>(relX / w);
+    outY = static_cast<int>(relY / h);
 }
 
 inline void DrawGrid(ImDrawList* dl, const ImVec2& min, const ImVec2& max, int w, int h, ImU32 color = IM_COL32(80, 80, 80, 128))
 {
-    int cols = (max.x - min.x) / w;
-    int rows = (max.y - min.y) / h;
+    const float minX = min.x;
+    const float minY = min.y;
+    const float maxX = max.x;
+    const float maxY = max.y;
 
-    for (int x = 0; x <= cols; ++x)
-        dl->AddLine(ImVec2(min.x + x * w, min.y), ImVec2(min.x + x * w, max.y), color);
+    const int cols = int((maxX - minX) / w);
+    const int rows = int((maxY - minY) / h);
 
-    for (int y = 0; y <= rows; ++y)
-        dl->AddLine(ImVec2(min.x, min.y + y * h), ImVec2(max.x, min.y + y * h), color);
+    float x = minX;
+    for (int i = 0; i <= cols; ++i, x += w)
+        dl->AddLine(ImVec2(x, minY), ImVec2(x, maxY), color);
+
+    float y = minY;
+    for (int i = 0; i <= rows; ++i, y += h)
+        dl->AddLine(ImVec2(minX, y), ImVec2(maxX, y), color);
 }
+
 
 inline void DrawHoverHighlight(ImDrawList* dl, const ImVec2& min, int w, int h, int x, int y)
 {
-    float x0 = min.x + x * w;
-    float y0 = min.y + y * h;
-    float x1 = x0 + w;
-    float y1 = y0 + h;
+    const float x0 = min.x + float(x * w);
+    const float y0 = min.y + float(y * h);
+    const float x1 = x0 + float(w);
+    const float y1 = y0 + float(h);
 
-    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(100, 150, 255, 60));
-    dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(100, 150, 255, 255), 0, 0, 2.0f);
+    const ImVec2 p0(x0, y0);
+    const ImVec2 p1(x1, y1);
+
+    dl->AddRectFilled(p0, p1, IM_COL32(100, 150, 255, 60));
+    dl->AddRect(p0, p1, IM_COL32(100, 150, 255, 255), 0.0f, 0, 2.0f);
 }
 
 inline void DrawSelectedOutline(ImDrawList* dl, const ImVec2& min, int w, int h, int x, int y, ImU32 color = IM_COL32(255, 255, 0, 40), bool outline = true)
 {
-    float x0 = min.x + x * w;
-    float y0 = min.y + y * h;
-    float x1 = x0 + w;
-    float y1 = y0 + h;
+    const float x0 = min.x + float(x * w);
+    const float y0 = min.y + float(y * h);
+    const float x1 = x0 + float(w);
+    const float y1 = y0 + float(h);
 
-    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), color);
-    if(outline)
-        dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, 255), 0, 0, 2.0f);
+    const ImVec2 p0(x0, y0);
+    const ImVec2 p1(x1, y1);
+
+    dl->AddRectFilled(p0, p1, color);
+
+    const ImU32 outlineColor =
+        outline ? IM_COL32(255, 255, 0, 255) : IM_COL32(255, 255, 0, 0);
+
+    dl->AddRect(p0, p1, outlineColor, 0.0f, 0, 2.0f);
 }
 
 inline void DrawTilePreview(ImDrawList* dl, const ImVec2& min, int ts, int s, int tileX, int tileY, int atlasX, int atlasY, const TilemapTexture& tileset)
 {
-    float x0 = min.x + tileX * ts;
-    float y0 = min.y + tileY * ts;
-    float x1 = x0 + ts;
-    float y1 = y0 + ts;
+    const float x0 = min.x + float(tileX * ts);
+    const float y0 = min.y + float(tileY * ts);
+    const float x1 = x0 + float(ts);
+    const float y1 = y0 + float(ts);
 
-    float u0 = (atlasX * s) / static_cast<float>(tileset.width);
-    float v0 = (atlasY * s) / static_cast<float>(tileset.height);
-    float u1 = ((atlasX + 1) * s) / static_cast<float>(tileset.width);
-    float v1 = ((atlasY + 1) * s) / static_cast<float>(tileset.height);
+    const ImVec2 p0(x0, y0);
+    const ImVec2 p1(x1, y1);
 
-    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+    const float invW = 1.0f / float(tileset.width);
+    const float invH = 1.0f / float(tileset.height);
+
+    const float u0 = float(atlasX * s) * invW;
+    const float v0 = float(atlasY * s) * invH;
+    const float u1 = float((atlasX + 1) * s) * invW;
+    const float v1 = float((atlasY + 1) * s) * invH;
+
+    const ImVec2 uv0(u0, v0);
+    const ImVec2 uv1(u1, v1);
+
+    static ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
 
     dl->AddCallback(platform_io.DrawCallback_SetSamplerNearest, nullptr);
 
-    dl->AddImage(
-        (ImTextureID)(intptr_t)tileset.tex,
-        ImVec2(x0, y0), ImVec2(x1, y1),
-        ImVec2(u0, v0), ImVec2(u1, v1),
-        IM_COL32(255, 255, 255, 200)
-    );
+    const ImTextureID texID = (ImTextureID)(intptr_t)tileset.tex;
+    dl->AddImage(texID, p0, p1, uv0, uv1, IM_COL32(255, 255, 255, 200));
 
     dl->AddCallback(platform_io.DrawCallback_SetSamplerLinear, nullptr);
 
-    dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, 255), 0, 0, 2.0f);
+    dl->AddRect(p0, p1, IM_COL32(255, 255, 0, 255), 0.0f, 0, 2.0f);
 }
+
 
 inline void App::SelectTileFromClick(int tileX, int tileY, int atlasWidth)
 {
     editor.selectedTile = tileY * atlasWidth + tileX;
 }
 
-inline void App::PaintTileGeneric(int tileX, int tileY, int atlasWidth, const bool color)
+inline DataChanged App::PaintMetaTile(int tileX, int tileY, int atlasWidth, const bool color)
 {
+    DataChanged d;
+
     if (tileX < 0 || tileY < 0)
-        return;
+        return d;
 
-    int index = tileY * atlasWidth + tileX;
+    auto& names = editor.data[editor.mode].levelNames;
+    const LevelEntry& level = editor.data[editor.mode].levels.at(names[editor.selectedLevel]);
 
-    const int tilesPerRow = 32;
-    const int metaTilesPerRow = tilesPerRow / 2;
+    const int metaX = tileX >> 1;
+    const int metaY = tileY >> 1;
+    const int metaTileIndex = (metaY * 16) + metaX;
 
-    int metaX = tileX / 2;
-    int metaY = tileY / 2;
-    int metaTileIndex = metaY * metaTilesPerRow + metaX;
+    if ((unsigned)metaTileIndex >= editor.levelMetaTiles.size())
+        return d;
 
-    int localX = tileX % 2;
-    int localY = tileY % 2;
-    int localIndex = localY * 2 + localX;
+    const int localIndex = ((tileY & 1) << 1) | (tileX & 1);
 
-    if (metaTileIndex < 0 || metaTileIndex >= editor.levelMetaTiles.size())
-        return;
+    auto& meta = editor.levelMetaTiles[metaTileIndex];
+
+    bool changed = false;
 
     if (!color)
     {
-        editor.levelMetaTiles[metaTileIndex].tiles[localIndex].left = editor.levelMacroTiles[editor.selectedTile].left;
+        const auto& srcMacro = editor.levelMacroTiles[editor.selectedTile];
+        auto& dstTile = meta.tiles[localIndex];
 
-        editor.levelMetaTiles[metaTileIndex].tiles[localIndex].right = editor.levelMacroTiles[editor.selectedTile].right;
+        if (dstTile.left.index != srcMacro.left.index)
+        {
+            dstTile.left = srcMacro.left;
+            changed = true;
+        }
 
-        editor.levelMetaTiles[metaTileIndex].macroIndex[localIndex] = editor.selectedTile;
+        if (dstTile.right.index != srcMacro.right.index)
+        {
+            dstTile.right = srcMacro.right;
+            changed = true;
+        }
+
+        if (meta.macroIndex[localIndex] != editor.selectedTile)
+        {
+            meta.macroIndex[localIndex] = editor.selectedTile;
+            changed = true;
+        }
     }
 
-    int offset = editor.mode == 0 ? 0 : 2;
-    editor.levelMetaTiles[metaTileIndex].palettes[localIndex] = editor.paletteIndex - offset;
+    const int offset = (editor.mode == 0 ? 0 : 2);
+    const int paletteValue = editor.paletteIndex - offset;
+
+    if (meta.palettes[localIndex] != paletteValue)
+    {
+        meta.palettes[localIndex] = paletteValue;
+        changed = true;
+    }
+
+    if (!changed)
+        return d;
+
+    const int trueIndex = metaTileIndex * 4;
+
+    d = saveMetaTileToROM(
+        editor.rom,
+        level.chip32x32 + trueIndex,
+        level.chip32x32_palette + trueIndex,
+        level.collision + trueIndex,
+        meta
+    );
 
     editor.rebuildTileset = true;
     editor.rebuildEdit = true;
+
+    return d;
 }
 
-inline void App::PaintTileBackground(std::vector<BGTileData>& data, int tileX, int tileY, int atlasWidth, const bool color, const bool subPal)
+inline MemoryDelta App::PaintTileBackground(std::vector<BGTileData>& data, int tileX, int tileY, int atlasWidth, const bool color, const bool subPal)
 {
+    MemoryDelta mem;
+
     if (tileX < 0 || tileY < 0)
-        return;
+        return mem;
 
-    int tileIndex = tileY * atlasWidth + tileX;
+    auto& names = editor.data[editor.mode].levelNames;
+    const LevelEntry& level =
+        editor.data[editor.mode].levels.at(names[editor.selectedLevel]);
 
-    if (tileIndex < 0 || tileIndex >= data.size())
-        return;
+    const int tileIndex = tileY * atlasWidth + tileX;
+    if ((unsigned)tileIndex >= data.size())
+        return mem;
+
+    BGTileData& tile = data[tileIndex];
+
+    bool changed = false;
 
     if (!color)
     {
-        data[tileIndex].vramPage = editor.selectedTile >> 8;
-        data[tileIndex].tileId = editor.selectedTile & 0xFF;
+        const int newPage = editor.selectedTile >> 8;
+        const int newId = editor.selectedTile & 0xFF;
+
+        if (tile.vramPage != newPage)
+        {
+            tile.vramPage = newPage;
+            changed = true;
+        }
+
+        if (tile.tileId != newId)
+        {
+            tile.tileId = newId;
+            changed = true;
+        }
     }
 
-    if (!subPal)
-        data[tileIndex].palette = editor.paletteIndex;
-    else
-        data[tileIndex].palette = editor.subPaletteIndex;
+    const int newPalette = subPal ? editor.subPaletteIndex : editor.paletteIndex;
 
-    data[tileIndex].hFlip = editor.hFlip;
-    data[tileIndex].vFlip = editor.vFlip;
-    data[tileIndex].highPriority = editor.hPriority;
+    if (tile.palette != newPalette)
+    {
+        tile.palette = newPalette;
+        changed = true;
+    }
+
+    if (tile.hFlip != editor.hFlip)
+    {
+        tile.hFlip = editor.hFlip;
+        changed = true;
+    }
+
+    if (tile.vFlip != editor.vFlip)
+    {
+        tile.vFlip = editor.vFlip;
+        changed = true;
+    }
+
+    if (tile.highPriority != editor.hPriority)
+    {
+        tile.highPriority = editor.hPriority;
+        changed = true;
+    }
+
+    if (!changed)
+        return mem;
+
+    const uint32_t base = level.bg_tilemap + (subPal ? 0x1000 : 0);
+    mem = saveBackgroundTileData(editor.rom, base + tileIndex * 2, tile);
 
     editor.rebuildEdit = true;
+    return mem;
 }
 
 inline void DrawCollisionBox(ImDrawList* dl, const ImVec2& min, int s, int x, int y, ImU32 color)
 {
-    float x0 = min.x + x * s;
-    float y0 = min.y + y * s;
-    float x1 = x0 + s;
-    float y1 = y0 + s;
+    const float x0 = min.x + float(x * s);
+    const float y0 = min.y + float(y * s);
+    const float x1 = x0 + float(s);
+    const float y1 = y0 + float(s);
 
-    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), color);
-    dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(0, 0, 0, 180), 0, 0, 1.0f);
+    const ImVec2 p0(x0, y0);
+    const ImVec2 p1(x1, y1);
+
+    dl->AddRectFilled(p0, p1, color);
+    dl->AddRect(p0, p1, IM_COL32_BLACK_TRANS, 0.0f, 0, 1.0f);
 }
 
 inline void DrawCollisionPreview(ImDrawList* dl, const ImVec2& min, int s, int x, int y, ImU32 color)
 {
-    float x0 = min.x + x * s;
-    float y0 = min.y + y * s;
-    float x1 = x0 + s;
-    float y1 = y0 + s;
+    const float x0 = min.x + float(x * s);
+    const float y0 = min.y + float(y * s);
+    const float x1 = x0 + float(s);
+    const float y1 = y0 + float(s);
 
-    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), color);
-    dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 255, 255), 0, 0, 2.0f);
-}
+    const ImVec2 p0(x0, y0);
+    const ImVec2 p1(x1, y1);
 
-inline void App::PaintMacroTilePixel(int macroIndex, int x, int y)
-{
-    if (macroIndex < 0 || macroIndex >= editor.levelMacroTiles.size())
-        return;
-
-    MacroTile& mt = editor.levelMacroTiles[macroIndex];
-
-    TileRef& tr = x > 7 ? mt.right : mt.left;
-    
-    int tileIndex = y > 7 ? tr.index + 1 : tr.index;
-
-    Tile& t = editor.levelTiles[tileIndex];
-
-    y = y % 8;
-    x = x % 8;
-
-    t.pixels[y * 8 + x] = editor.selectedColor;
-
-    saveTileToROM(t, editor.rom);
-
-    editor.rebuildTileset = true;
-    editor.rebuildEdit = true;
-}
-
-inline void App::PaintTilePixel(int tileIndex, int x, int y, bool is2bpp)
-{
-    Tile& t = editor.levelTiles[tileIndex];
-
-    y = y % 8;
-    x = x % 8;
-
-    t.pixels[y * 8 + x] = editor.selectedColor;
-
-    saveTileToROM(t, editor.rom, is2bpp);
-
-    editor.rebuildTileset = true;
-    editor.rebuildEdit = true;
+    dl->AddRectFilled(p0, p1, color);
+    dl->AddRect(p0, p1, IM_COL32(255, 255, 255, 255), 0.0f, 0, 2.0f);
 }
 
 static void verticalMirroring(std::vector<ColorRGBA>& pixels, int& width, int& height, bool repeat)
 {
-    int halfH = height / 2;
-    int newW = width * 2;
+    const int halfH = height >> 1;
+    const int newW = width << 1;
 
     std::vector<ColorRGBA> stitched(newW * halfH);
+
+    const int oldW = width;
+
     for (int y = 0; y < halfH; ++y)
     {
-        for (int x = 0; x < width; ++x)
-        {
-            stitched[y * newW + x] = pixels[y * width + x];
-        }
-    }
-    if (!repeat)
-    {
-        for (int y = 0; y < halfH; ++y)
-        {
-            for (int x = 0; x < width; ++x)
-            {
-                stitched[y * newW + (x + width)] = pixels[(y + halfH) * width + x];
-            }
-        }
-    }
-    else
-    {
-        for (int y = 0; y < halfH; ++y)
-        {
-            for (int x = 0; x < width; ++x)
-            {
-                stitched[y * newW + (x + width)] = pixels[y * width + x];
-            }
-        }
+        const int srcTop = y * oldW;
+        const int srcBottom = (y + halfH) * oldW;
+        const int dst = y * newW;
+
+        std::memcpy(&stitched[dst], &pixels[srcTop], oldW * sizeof(ColorRGBA));
+
+        const ColorRGBA* srcRight = repeat ? &pixels[srcTop] : &pixels[srcBottom];
+        std::memcpy(&stitched[dst + oldW], srcRight, oldW * sizeof(ColorRGBA));
     }
 
-    pixels = stitched;
+    pixels.swap(stitched);
     width = newW;
     height = halfH;
 }
 
 static void horizontalMirroring(std::vector<ColorRGBA>& pixels, int& width, int& height)
 {
-    int halfH = height / 2;
+    const int halfH = height >> 1;
+    const int rowBytes = width * sizeof(ColorRGBA);
 
     for (int y = 0; y < halfH; ++y)
     {
-        for (int x = 0; x < width; ++x)
-        {
-            pixels[(y + halfH) * width + x] = pixels[y * width + x];
-        }
+        const int src = y * width;
+        const int dst = (y + halfH) * width;
+
+        std::memcpy(&pixels[dst], &pixels[src], rowBytes);
     }
 }
 
@@ -2152,7 +2652,6 @@ static void DrawHorizontalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& 
         float w1 = u1_wrapped;       // width of second UV slice
         float total = w0 + w1;       // should be 0.5
         float px0 = hW * (w0 / total);
-        //float px1 = hW * (w1 / total);
         int px0i = static_cast<int>(px0 + 0.5f);
         int px1i = hW - px0i;
 
@@ -2174,7 +2673,7 @@ static void DrawHorizontalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& 
 
 static void DrawVerticalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& trueWidth, int& trueHeight, int& scanlines, int& zoom)
 {
-    
+
     int hH = trueHeight / 2;
 
     float uvOffset = fmod(static_cast<float>(scanlines * zoom) / t.height, 1.0f);
@@ -2198,8 +2697,7 @@ static void DrawVerticalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& tr
         float h1 = v1_wrapped;       // height of second UV slice
         float total = h0 + h1;       // should be 0.5
         float px0 = hH * (h0 / total);
-        //float px1 = hH - px0;
-        int px0i = static_cast<int>(px0 + 0.5f); 
+        int px0i = static_cast<int>(px0 + 0.5f);
         int px1i = hH - px0i;
 
         DrawNearestImage(dl, t,
@@ -2222,79 +2720,86 @@ static void DrawVerticalWrappingImage(ImDrawList* dl, TilemapTexture& t, int& tr
 
 inline void DrawUnSelectedBox()
 {
-    ImVec2 p0 = ImGui::GetCursorScreenPos();
-    ImVec2 p1 = ImVec2(
-        p0.x + ImGui::GetContentRegionAvail().x,
-        p0.y + ImGui::GetTextLineHeight()
-    );
+    const ImVec2 p0 = ImGui::GetCursorScreenPos();
 
-    ImGui::GetWindowDrawList()->AddRectFilled(
-        p0, p1,
-        IM_COL32(32, 32, 32, 255)
-    );
+    const float w = ImGui::GetContentRegionAvail().x;
+    const float h = ImGui::GetTextLineHeight();
+
+    const ImVec2 p1(p0.x + w, p0.y + h);
+
+    ImGui::GetWindowDrawList()->AddRectFilled(p0, p1, IM_COL32(32, 32, 32, 255));
 }
 
 App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY, const int& tileW, const int& tileH, const float& scale, const Palette& pal, const int& psize, int& selectedColor, const int& trueWidth, const int& trueHeight)
 {
     TileEditResult out{};
 
-    float u0 = (selX * tileW) / float(trueWidth);
-    float v0 = (selY * tileH) / float(trueHeight);
-    float u1 = ((selX + 1) * tileW) / float(trueWidth);
-    float v1 = ((selY + 1) * tileH) / float(trueHeight);
+    const float invW = 1.0f / float(trueWidth);
+    const float invH = 1.0f / float(trueHeight);
 
-    ImVec2 bigSize(tileW * scale, tileH * scale);
+    const float u0 = float(selX * tileW) * invW;
+    const float v0 = float(selY * tileH) * invH;
+    const float u1 = float((selX + 1) * tileW) * invW;
+    const float v1 = float((selY + 1) * tileH) * invH;
+
+    const ImVec2 bigSize(tileW * scale, tileH * scale);
 
     ImGui::SameLine();
     ImGui::BeginGroup();
     ImGui::SeparatorText("Selected Tile");
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
+
     DrawNearestImage(dl, tex, bigSize, ImVec2(u0, v0), ImVec2(u1, v1));
 
-    ImVec2 bigMin = ImGui::GetItemRectMin();
-    ImVec2 bigMax = ImGui::GetItemRectMax();
+    const ImVec2 bigMin = ImGui::GetItemRectMin();
+    const ImVec2 bigMax = ImGui::GetItemRectMax();
 
-    DrawGrid(dl, bigMin, bigMax, scale * 2, scale * 2);
+    DrawGrid(dl, bigMin, bigMax, scale * 2.0f, scale * 2.0f);
 
     for (int i = 0; i < psize; ++i)
     {
-        ImVec4 c(
-            pal[i].r / 255.f,
-            pal[i].g / 255.f,
-            pal[i].b / 255.f,
-            1.f
+        const ImVec4 c(
+            pal[i].r * (1.0f / 255.0f),
+            pal[i].g * (1.0f / 255.0f),
+            pal[i].b * (1.0f / 255.0f),
+            1.0f
         );
 
-        std::string id = "color_" + std::to_string(i);
+        char id[16];
+        snprintf(id, sizeof(id), "col_%d", i);
 
-        if (ImGui::ColorButton(id.c_str(), c, 0, ImVec2(20, 20)))
+        if (ImGui::ColorButton(id, c, 0, ImVec2(20, 20)))
             selectedColor = i;
 
         if (selectedColor == i)
         {
-            ImVec2 p0 = ImGui::GetItemRectMin();
-            ImVec2 p1 = ImGui::GetItemRectMax();
-            dl->AddRect(p0, p1, IM_COL32(255, 255, 0, 255), 0, 0, 2.0f);
+            const ImVec2 p0 = ImGui::GetItemRectMin();
+            const ImVec2 p1 = ImGui::GetItemRectMax();
+            dl->AddRect(p0, p1, IM_COL32(255, 255, 0, 255), 0.0f, 0, 2.0f);
         }
 
-        if ((i % 8) != 7)
+        if ((i & 7) != 7)
             ImGui::SameLine();
     }
 
     ImGui::NewLine();
 
-    ImVec2 mouse = ImGui::GetMousePos();
-    bool inside =
+    const ImVec2 mouse = ImGui::GetMousePos();
+
+    const bool inside =
         mouse.x >= bigMin.x && mouse.x < bigMax.x &&
         mouse.y >= bigMin.y && mouse.y < bigMax.y;
 
-    if (inside && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    const bool down = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+
+    if (inside && down)
     {
         out.clicked = true;
-        out.px = int((mouse.x - bigMin.x) / (scale * 2));
-        out.py = int((mouse.y - bigMin.y) / (scale * 2));
+        out.px = int((mouse.x - bigMin.x) / (scale * 2.0f));
+        out.py = int((mouse.y - bigMin.y) / (scale * 2.0f));
     }
+    out.down = down;
 
     ImGui::EndGroup();
     return out;
@@ -2369,22 +2874,19 @@ void ClearAllLinks(std::array<int, 1024>& linkFromTile, std::unordered_map<int, 
     linkingPGR = false;
 }
 
-
-ImU32 ColorFromIndex(int idx)
+inline ImU32 ColorFromIndex(int idx)
 {
-    float hue = static_cast<float>(idx) / 1024.0f;
+    const float hue = idx * (1.0f / 1024.0f);
 
     float r, g, b;
     ImGui::ColorConvertHSVtoRGB(hue, 1.0f, 1.0f, r, g, b);
 
-    return IM_COL32(
-        static_cast<uint8_t>(r * 255),
-        static_cast<uint8_t>(g * 255),
-        static_cast<uint8_t>(b * 255),
-        60
-    );
-}
+    const ImU32 R = (ImU32)(r * 255.0f);
+    const ImU32 G = (ImU32)(g * 255.0f);
+    const ImU32 B = (ImU32)(b * 255.0f);
 
+    return IM_COL32(R, G, B, 60);
+}
 
 void App::drawGraphicsWindow()
 {
@@ -2476,10 +2978,9 @@ void App::drawGraphicsWindow()
         for (size_t i = 0; i < commonGfx.layer12.size(); ++i)
         {
             bool selected = commonGfx.layer12[i].start == range.start;
-            std::stringstream ss;
-            ss << std::uppercase << std::hex << commonGfx.layer12[i].start;
-            std::string hex_str = ss.str();
-            if (ImGui::Selectable(hex_str.c_str(), selected))
+            char hexbuf[16];
+            snprintf(hexbuf, sizeof(hexbuf), "%06X", commonGfx.layer12[i].start);
+            if (ImGui::Selectable(hexbuf, selected))
             {
                 range.start = commonGfx.layer12[i].start;
             }
@@ -2494,10 +2995,9 @@ void App::drawGraphicsWindow()
         for (size_t i = 0; i < levelGfx.layer12.size(); ++i)
         {
             bool selected = levelGfx.layer12[i].start == range.start;
-            std::stringstream ss;
-            ss << std::uppercase << std::hex << levelGfx.layer12[i].start;
-            std::string hex_str = ss.str();
-            if (ImGui::Selectable(hex_str.c_str(), selected))
+            char hexbuf[16];
+            snprintf(hexbuf, sizeof(hexbuf), "%06X", levelGfx.layer12[i].start);
+            if (ImGui::Selectable(hexbuf, selected))
             {
                 range.start = levelGfx.layer12[i].start;
             }
@@ -2731,16 +3231,21 @@ void App::drawGraphicsWindow()
 
             std::copy(imgTiles.begin() + offset, imgTiles.begin() + offset + chunk, tiles.begin());
 
+            static DataChanged data;
             for (size_t i = 0; i < chunk; ++i)
             {
                 tiles[i].romAddress = range.start + i * formatSize[tileDisplay];
-                saveTileToROM(tiles[i], editor.rom, is2bpp);
+                MemoryDelta mem = saveTileToROM(tiles[i], editor.rom, is2bpp);
+                data.deltas.push_back(mem);
             }
-
             remaining -= chunk;
 
             if (remaining == 0)
+            {
+                saveROMData(data);
+                data.deltas.clear();
                 continueCopy = false;
+            }
             else
             {
                 continueCopy = true;
@@ -2756,13 +3261,15 @@ void App::drawGraphicsWindow()
         label = "<< Replace Linked Tiles ";
         if (ImGui::Button(label.c_str(), ImVec2(200, 0)))
         {
+            DataChanged data;
             for (int A = 0; A < 1024; ++A)
             {
                 int B = linkFromTile[A];
                 if (B < 0) continue;
                 if (B >= static_cast<int>(imgTiles.size())) continue;
                 tiles[A].pixels = imgTiles[B].pixels;
-                saveTileToROM(tiles[A], editor.rom, is2bpp);
+                MemoryDelta mem = saveTileToROM(tiles[A], editor.rom, is2bpp);
+                data.deltas.push_back(mem);
                 rebuild = true;
             }
             if(rebuild)
@@ -2880,7 +3387,6 @@ void App::drawGraphicsWindow()
 
     if (tileIdx >= 0)
     {
-        //dl = ImGui::GetWindowDrawList();
         static int selectedColor = 0;
         int selX = tileIdx % atlasWidth;
         int selY = tileIdx / atlasWidth;
@@ -2912,9 +3418,14 @@ void App::drawGraphicsWindow()
         else
             scale *= 8;
         TileEditResult result = DrawTileEdit((imgClicked ? editor.image.texture : tex), selX, selY, tileW, tileH, scale, pal, psize, selectedColor, trueWidth, trueHeight);
-
-        if (result.clicked)
+        static TileEditResult r;
+        static DataChanged data;
+        static int lastTileIdx = -1;
+        static int lastColor = -1;
+        if (result.clicked && (r.px != result.px || r.py != result.py || lastColor != selectedColor))
         {
+            r = result;
+            lastColor = selectedColor;
             int tempIdx = tileIdx;
 
             int blockX = result.px / 8;
@@ -2931,8 +3442,14 @@ void App::drawGraphicsWindow()
             Tile& t = ts->at(tempIdx);
             t.pixels[localY * 8 + localX] = selectedColor;
 
-            saveTileToROM(t, editor.rom, is2bpp);
+            MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
+            data.deltas.push_back(mem);
             rebuild = true;
+        }
+        else if (!data.deltas.empty() && !result.down)
+        {
+            saveROMData(data);
+            data.deltas.clear();
         }
     }
 
@@ -3003,6 +3520,7 @@ void App::drawEditMode()
     DrawNearestImage(dl, tilegrid, ImVec2(trueWidth, trueHeight), ImVec2(0, 0), ImVec2(1, 1));
 
     bool hovering = ImGui::IsItemHovered();
+    bool leftClick = ImGui::IsMouseDown(ImGuiMouseButton_Left);
 
     ImGui::EndChild();
 
@@ -3012,8 +3530,12 @@ void App::drawEditMode()
     int atlasWidth = trueWidth / trueSize;
     int atlasHeight = trueHeight / trueSize;
     int tileX = -1, tileY = -1;
-    GetTileUnderMouse(min, trueSize, trueSize, tileX, tileY);
- 
+    if (hovering)
+    {
+        GetTileUnderMouse(min, trueSize, trueSize, tileX, tileY);
+        DrawHoverHighlight(dl, min, trueSize, trueSize, tileX, tileY);
+    }
+    static DataChanged data;
     if (editor.editMode == EM_Collision)
     {
         for (int y = 0; y < atlasHeight; ++y)
@@ -3038,45 +3560,68 @@ void App::drawEditMode()
                     DrawCollisionBox(dl, min, trueSize, x, y, color);
             }
         }
-
         if (editor.selectedTile >= 0 && hovering)
         {
             ImU32 previewColor = collisionTypes[editor.selectedTile].color;
             DrawCollisionPreview(dl, min, trueSize, tileX, tileY, previewColor);
 
-            if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            if (leftClick)
             {
                 int metaX = tileX / 2;
                 int metaY = tileY / 2;
+                static int metaTileIndex = -1;
                 int metaIndex = metaY * (atlasWidth / 2) + metaX;
 
-                if (metaIndex >= 0 && metaIndex < editor.levelMetaTiles.size())
+                if (metaIndex >= 0 && metaIndex < editor.levelMetaTiles.size() && metaIndex != metaTileIndex)
                 {
+                    metaTileIndex = metaIndex;
                     int localX = tileX % 2;
                     int localY = tileY % 2;
                     int localIndex = localY * 2 + localX;
 
                     editor.levelMetaTiles[metaIndex].collision[localIndex] = editor.selectedTile;
+
+                    auto& names = editor.data[editor.mode].levelNames;
+                    const std::string& levelName = names[editor.selectedLevel];
+                    const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
+
+                    int trueIndex = metaIndex * 4;
+                    DataChanged d = saveMetaTileToROM(editor.rom, level.chip32x32 + trueIndex, level.chip32x32_palette + trueIndex, level.collision + trueIndex, editor.levelMetaTiles[metaIndex]);
+                    data.deltas.insert(data.deltas.end(), d.deltas.begin(), d.deltas.end());
                 }
             }
         }
     }
     else if (editor.inLevelRegion && hovering)
     {
-        int atlasW = editor.tileset.width / tileSize;
-        int atlasX = editor.selectedTile % atlasW;
-        int atlasY = editor.selectedTile / atlasW;
-
-        DrawTilePreview(dl, min, trueSize, tileSize, tileX, tileY, atlasX, atlasY, editor.tileset);
-
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (editor.selectedTile >= 0 || editor.paintMode))
+        if (editor.selectedTile >= 0)
         {
+            int atlasW = editor.tileset.width / tileSize;
+            int atlasX = editor.selectedTile % atlasW;
+            int atlasY = editor.selectedTile / atlasW;
+            DrawTilePreview(dl, min, trueSize, tileSize, tileX, tileY, atlasX, atlasY, editor.tileset);
+        }
+        if (leftClick && (editor.selectedTile >= 0 || editor.paintMode))
+        {
+           
             if (editor.editMode == EM_Layer2)
-                PaintTileBackground(editor.layer2TileData, tileX, tileY, atlasWidth, editor.paintMode, false);
+            {
+                MemoryDelta m = PaintTileBackground(editor.layer2TileData, tileX, tileY, atlasWidth, editor.paintMode, false);
+                if(m.address != -1)
+                    data.deltas.push_back(m);
+            }
             else if (editor.editMode == EM_Layer3)
-                PaintTileBackground(editor.layer3TileData, tileX, tileY, atlasWidth, editor.paintMode, true);
+            {
+                MemoryDelta m = PaintTileBackground(editor.layer3TileData, tileX, tileY, atlasWidth, editor.paintMode, true);
+                if (m.address != -1)
+                    data.deltas.push_back(m);
+            }
             else
-                PaintTileGeneric(tileX, tileY, atlasWidth, editor.paintMode);
+            {
+                DataChanged d;
+                d = PaintMetaTile(tileX, tileY, atlasWidth, editor.paintMode);
+                data.deltas.insert(data.deltas.end(), d.deltas.begin(), d.deltas.end());
+            }
         }
         if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
         {
@@ -3115,6 +3660,11 @@ void App::drawEditMode()
         }
     }
 
+    if (!data.deltas.empty() && !leftClick)
+    {
+        saveROMData(data);
+        data.deltas.clear();
+    }
     DrawGrid(dl, min, max, trueSize, trueSize);
 
     if (editor.editMode == EM_Metatiles)
@@ -3240,13 +3790,42 @@ void App::drawTileView()
             if (tileSize == 8)
                 scale *= 2;
             TileEditResult result = DrawTileEdit(editor.tileset, selX, selY, trueSize, trueSize, scale, pal, psize, editor.selectedColor, trueWidth, trueHeight);
-
-            if (result.clicked)
+            static TileEditResult r;
+            static DataChanged data;
+            static int lastColor = -1;
+            if (result.clicked && (r.px != result.px || r.py != result.py || lastColor != editor.selectedColor))
             {
+                r = result;
+                lastColor = editor.selectedColor;
+                Tile* t;
                 if (tileSize == 16)
-                    PaintMacroTilePixel(editor.selectedTile, result.px, result.py);
+                {
+                    MacroTile& mt = editor.levelMacroTiles[editor.selectedTile];
+
+                    TileRef& tr = result.px > 7 ? mt.right : mt.left;
+
+                    int tileIndex = result.py > 7 ? tr.index + 1 : tr.index;
+
+                    t = &editor.levelTiles[tileIndex];
+                }
                 else
-                    PaintTilePixel(editor.selectedTile, result.px, result.py, is2bpp);
+                {
+                    t = &editor.levelTiles[editor.selectedTile];
+                }
+                result.py = result.py % 8;
+                result.px = result.px % 8;
+
+                t->pixels[result.py * 8 + result.px] = editor.selectedColor;
+
+                MemoryDelta mem = saveTileToROM(*t, editor.rom, is2bpp);
+                data.deltas.push_back(mem);
+                editor.rebuildTileset = true;
+                editor.rebuildEdit = true;
+            }
+            else if (!data.deltas.empty() && !result.down)
+            {
+                saveROMData(data);
+                data.deltas.clear();
             }
         }
     }
@@ -3455,6 +4034,7 @@ void App::drawLevelView()
     ImVec2 max = ImGui::GetItemRectMax();
     
     bool hovering = ImGui::IsItemHovered();
+    bool leftClick = ImGui::IsMouseDown(ImGuiMouseButton_Left);
     const int s = 32;
     const int ts = s * editor.editorZoom;
 
@@ -3462,6 +4042,7 @@ void App::drawLevelView()
 
     if (editor.lvlViewMode == LVM_Level)
     {
+        static DataChanged data;
         DrawGrid(dl, min, max, ts, ts);
 
         if (editor.inLevelRegion)
@@ -3471,7 +4052,6 @@ void App::drawLevelView()
             
             if (hovering)
             {
-                DrawHoverHighlight(dl, min, ts, ts, tileX, tileY);
                 if (editor.selectedTile >= 0)
                 {
                     int atlasW = editor.tileset.width / s;
@@ -3479,20 +4059,33 @@ void App::drawLevelView()
                     int atlasY = editor.selectedTile / atlasW;
 
                     DrawTilePreview(dl, min, ts, s, tileX, tileY, atlasX, atlasY, editor.tileset);
-
-                    if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+                    
+                    if (leftClick)
                     {
                         int worldTileX = tileX + windowX;
                         int worldTileY = tileY;
 
                         int index = worldTileY * fullMetaWidth + worldTileX;
+                        static int oldIndex = -1;
 
-                        if (index >= 0 && index < editor.levelData.size() && editor.inLevelRegion)
+                        if (index >= 0 && index < editor.levelData.size() && editor.inLevelRegion && index != oldIndex)
                         {
+                            oldIndex = index;
                             editor.levelData[index] = editor.selectedTile;
+                            int screenIndex = worldTileX / 8;
+                            int col = worldTileX % 8;
+                            int row = worldTileY;
+
+                            MemoryDelta m = saveLevelData(editor.rom, level.map, screenIndex, row, col, editor.selectedTile);
+                            data.deltas.push_back(m);
                             editor.rebuildView = true;
                         }
                     }
+                    
+                }
+                else
+                {
+                    DrawHoverHighlight(dl, min, ts, ts, tileX, tileY);
                 }
                 if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && editor.inLevelRegion)
                 {
@@ -3508,18 +4101,45 @@ void App::drawLevelView()
                 }
             }
         }
+        if (!data.deltas.empty() && !leftClick)
+        {
+            saveROMData(data);
+            data.deltas.clear();
+        }
 
         if (editor.mode)
         {
+            bool dataChanged = false;
+            bool screen2 = false;
             std::string label = "Layer 2 Scroll Screen ";
-            ImGui::Checkbox((label + std::to_string(editor.currentScreen)).c_str(), &editor.bgScrollData[editor.currentScreen].bg2);
+            if (ImGui::Checkbox((label + std::to_string(editor.currentScreen)).c_str(), &editor.bgScrollData[editor.currentScreen].bg2))
+            {
+                dataChanged |= true;
+            }
             ImGui::SameLine();
-            ImGui::Checkbox((label + std::to_string(editor.currentScreen + 1)).c_str(), &editor.bgScrollData[editor.currentScreen + 1].bg2);
+            if (ImGui::Checkbox((label + std::to_string(editor.currentScreen + 1)).c_str(), &editor.bgScrollData[editor.currentScreen + 1].bg2))
+            {
+                dataChanged |= true;
+                screen2 |= true;
+            }
 
             label = "Layer 3 Scroll Screen ";
-            ImGui::Checkbox((label + std::to_string(editor.currentScreen)).c_str(), &editor.bgScrollData[editor.currentScreen].bg3);
+            if (ImGui::Checkbox((label + std::to_string(editor.currentScreen)).c_str(), &editor.bgScrollData[editor.currentScreen].bg3))
+            {
+                dataChanged |= true;
+            }
             ImGui::SameLine();
-            ImGui::Checkbox((label + std::to_string(editor.currentScreen + 1)).c_str(), &editor.bgScrollData[editor.currentScreen + 1].bg3);
+            if(ImGui::Checkbox((label + std::to_string(editor.currentScreen + 1)).c_str(), &editor.bgScrollData[editor.currentScreen + 1].bg3))
+            {
+                dataChanged |= true;
+                screen2 |= true;
+            }
+
+            if (dataChanged)
+            {
+                MemoryDelta mem = saveBackgroundScrollData(editor.rom, level.bg_scroll + editor.currentScreen + screen2, editor.bgScrollData[editor.currentScreen + screen2]);
+                saveROMData(mem);
+            }
 
             drawBGScrollData();
 
@@ -3585,7 +4205,6 @@ void App::drawLevelView()
 
         float halfWidth = ImGui::GetContentRegionAvail().x * 0.5f;
         ImVec2 childSize(halfWidth, 0);
-
         for (int type = 0; type < 2; ++type)
         {
             if (type == 0)
@@ -3599,14 +4218,13 @@ void App::drawLevelView()
                 ImGui::SeparatorText("Items");
             }
             Objects* objs = (type == 0 ? &editor.enemyData : &editor.itemData);
-            int index = 0;
-
             for (size_t i = 0; i < objs->size(); ++i)
             {
                 Object& obj = (*objs)[i];
                 bool onScreen = (obj.screen == screenA || obj.screen == screenB);
                 bool valid = (obj.type != 0xFF);
-                bool selected = editor.selectedObject == i && type == editor.objectType;
+                bool selected = editor.selectedObject == i && type == editor.objectType; 
+                bool objDataChanged = false;
 
                 if (!selected)
                 {
@@ -3622,6 +4240,7 @@ void App::drawLevelView()
 
                 if (ImGui::BeginPopupContextItem())
                 {
+                    bool objListChanged = false;
                     if (ImGui::MenuItem("Copy Object"))
                     {
                         editor.objClip.obj = obj;
@@ -3632,15 +4251,18 @@ void App::drawLevelView()
                     if (ImGui::MenuItem("Paste Object", nullptr, false, editor.objClip.hasData && editor.objClip.type == type))
                     {
                         obj = editor.objClip.obj;
+                        objListChanged |= true;
                     }
 
                     if (ImGui::MenuItem("Swap with Clipboard", nullptr, false, editor.objClip.hasData && editor.objClip.type == type))
                     {
                         std::swap(obj, editor.objClip.obj);
+                        objListChanged |= true;
                     }
 
                     if (ImGui::MenuItem("Insert Blank Object Above", nullptr, false, i != 0))
                     {
+                        objListChanged |= true;
                         for (size_t x = 1; x <= i; ++x)
                         {
                             (*objs)[x - 1] = (*objs)[x];
@@ -3654,6 +4276,7 @@ void App::drawLevelView()
 
                     if (ImGui::MenuItem("Insert Blank Object Below", nullptr, false, i < objs->size() - 1))
                     {
+                        objListChanged |= true;
                         for (size_t x = i + 1; x + 1 < objs->size(); ++x)
                         {
                             (*objs)[x + 1] = (*objs)[x];
@@ -3668,6 +4291,17 @@ void App::drawLevelView()
                     if (ImGui::MenuItem("Delete Object"))
                     {
                         obj.screen = 255;
+                        objDataChanged |= true;
+                    }
+
+                    if (objListChanged)
+                    {
+                        DataChanged data;
+                        if (editor.objectType == 0)
+                            data = saveAllObjectData(editor.rom, level.enemy_screen, level.enemy_x, level.enemy_y, level.enemy_type, *objs);
+                        else
+                            data = saveAllObjectData(editor.rom, level.item_screen, level.item_x, level.item_y, level.item_type, *objs);
+                        saveROMData(data);
                     }
 
                     ImGui::EndPopup();
@@ -3679,11 +4313,7 @@ void App::drawLevelView()
                 ImGui::BulletText("Type: %u", obj.type);
                 ImGui::Separator();
 
-                if (!onScreen || !valid)
-                {
-                    ++index;
-                    continue;
-                }
+                if (!onScreen || !valid) continue;
 
                 float px = min.x + ((obj.screen - screenA) * 256 + obj.x) * editor.editorZoom;
                 float py = min.y + (obj.y * editor.editorZoom);
@@ -3701,30 +4331,26 @@ void App::drawLevelView()
 
                 if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                 {
-                    editor.selectedObject = index;
+                    editor.selectedObject = i;
                     editor.objectType = type;
                     editor.dragging = true;
                     editor.dragOffset = ImVec2(mouse.x - px, mouse.y - py);
                 }
-
-                if (editor.dragging &&
-                    editor.objectType == type &&
-                    editor.selectedObject == index &&
-                    ImGui::IsMouseDown(ImGuiMouseButton_Left))
+                if (editor.dragging && editor.objectType == type && selected && ImGui::IsMouseDown(ImGuiMouseButton_Left))
                 {
                     int newX = mouse.x - editor.dragOffset.x - min.x - (obj.screen - screenA) * 256;
                     int newY = mouse.y - editor.dragOffset.y - min.y;
 
                     obj.x = std::clamp(newX, 0, 255);
                     obj.y = std::clamp(newY, 0, 255);
+                    
+                    objDataChanged |= true;
                 }
 
                 if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
                     editor.dragging = false;
 
-                bool isSelected = (editor.objectType == type && editor.selectedObject == index);
-
-                ImU32 col = isSelected
+                ImU32 col = selected
                     ? IM_COL32(255, 255, 0, 255)
                     : (type == 0 ? IM_COL32(255, 0, 0, 255) : IM_COL32(0, 0, 255, 255));
 
@@ -3735,7 +4361,15 @@ void App::drawLevelView()
                 snprintf(buf, sizeof(buf), "%02d", obj.type);
                 DrawTextOutlined(dl, ImVec2(px, py), IM_COL32(0, 0, 0, 255), buf, editor.editorZoom);
 
-                ++index;
+                if (objDataChanged)
+                {
+                    DataChanged data;
+                    if (editor.objectType == 0)
+                        data = saveObjectData(editor.rom, level.enemy_screen + i, level.enemy_x + i, level.enemy_y + i, level.enemy_type + i, obj);
+                    else
+                        data = saveObjectData(editor.rom, level.item_screen + i, level.item_x + i, level.item_y + i, level.item_type + i, obj);
+                    saveROMData(data);
+                }
             }
             ImGui::EndChild();
             ImGui::SameLine();
@@ -3744,6 +4378,7 @@ void App::drawLevelView()
 
         if (editor.selectedObject > -1)
         {
+            bool objDataChanged = false;
             Objects* objs =
                 (editor.objectType == 0 ? &editor.enemyData : &editor.itemData);
 
@@ -3755,19 +4390,41 @@ void App::drawLevelView()
 
             int x = obj.x, y = obj.y, scr = obj.screen, type = obj.type;
 
-            if(ImGui::InputInt("X", &x))
+            if (ImGui::InputInt("X", &x))
+            {
                 obj.x = std::clamp(x, 0, 255);
-            if(ImGui::InputInt("Y", &y))
+                objDataChanged |= true;
+            }
+            if (ImGui::InputInt("Y", &y))
+            {
                 obj.y = std::clamp(y, 0, 255);
-            if(ImGui::InputInt("Screen #", &scr))
+                objDataChanged |= true;
+            }
+            if (ImGui::InputInt("Screen #", &scr))
+            {
                 obj.screen = std::clamp(scr, 0, 255);
-            if(ImGui::InputInt("Type", &type))
+                objDataChanged |= true;
+            }
+            if (ImGui::InputInt("Type", &type))
+            {
                 obj.type = std::clamp(type, 0, 255);
+                objDataChanged |= true;
+            }
 
             if (obj.screen > editor.currentScreen + 1 || obj.screen < editor.currentScreen)
             {
                 editor.currentScreen = obj.screen;
                 editor.rebuildView = true;
+            }
+
+            if (objDataChanged)
+            {
+                DataChanged data;
+                if (editor.objectType == 0)
+                    data = saveObjectData(editor.rom, level.enemy_screen + editor.selectedObject, level.enemy_x + editor.selectedObject, level.enemy_y + editor.selectedObject, level.enemy_type + editor.selectedObject, obj);
+                else
+                    data = saveObjectData(editor.rom, level.item_screen + editor.selectedObject, level.item_x + editor.selectedObject, level.item_y + editor.selectedObject, level.item_type + editor.selectedObject, obj);
+                saveROMData(data);
             }
         }
     }
@@ -3782,6 +4439,7 @@ void App::drawLevelView()
 
             if (selected)
             {
+                bool change = false;
                 std::string id = "##" + std::to_string(i);
                 std::string label = "Checkpoint " + std::to_string(i);
                 ImGui::SeparatorText(label.c_str());
@@ -3789,14 +4447,21 @@ void App::drawLevelView()
                 ImGui::PushItemWidth(newWidth);
                 int screen = c->screen;
                 label = "Screen" + id;
-                if(ImGui::InputInt(label.c_str(), &screen))
+                if (ImGui::InputInt(label.c_str(), &screen))
+                {
                     screen = std::clamp(screen, 0, 255);
+                    change |= true;
+                }
                 int temp = c->y;
                 label = "Y" + id;
                 if (ImGui::InputInt(label.c_str(), &temp, 16))
+                {
+                    change |= true;
                     c->y = std::clamp(temp, 4, 244);
+                }
                 if (c->screen != screen)
                 {
+                    change |= true;
                     c->screen = screen;
                     editor.currentScreen = c->screen;
                     if (calc)
@@ -3849,27 +4514,42 @@ void App::drawLevelView()
                 label = "Left Scroll Screen" + id;
                 temp = c->left_screen;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
+                    change |= true;
                     c->left_screen = std::clamp(temp, 0, maxScreens);
+                }
 
                 label = "Right Scroll Screen" + id;
                 temp = c->right_screen;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
+                    change |= true;
                     c->right_screen = std::clamp(temp, 0, maxScreens);
+                }
 
                 label = "Scroll Data Index" + id;
                 temp = c->scroll;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
+                    change |= true;
                     c->scroll = std::clamp(temp, 0, static_cast<int>(editor.scrollData.size()));
+                }
                 
                 label = "Enemy Index" + id;
                 temp = c->enemy_index;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
+                    change |= true;
                     c->enemy_index = std::clamp(temp, 0, static_cast<int>(editor.enemyData.size()));
+                }
                 
                 label = "Item Index" + id;
                 temp = c->item_index;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
+                    change |= true;
                     c->item_index = std::clamp(temp, 0, static_cast<int>(editor.itemData.size()));
+                }
 
                 {
                     char bufBack[5];
@@ -3880,6 +4560,7 @@ void App::drawLevelView()
                         ImGuiInputTextFlags_CharsHexadecimal))
                     {
                         c->map_back_addr = std::clamp(static_cast<int>(strtol(bufBack, nullptr, 16)), 0, 0xFFFF);
+                        change |= true;
                     }
                 }
 
@@ -3892,7 +4573,15 @@ void App::drawLevelView()
                         ImGuiInputTextFlags_CharsHexadecimal))
                     {
                         c->map_forward_addr = std::clamp(static_cast<int>(strtol(bufForward, nullptr, 16)), 0, 0xFFFF);
+                        change |= true;
                     }
+                }
+
+                if (change)
+                {
+                    DataChanged d = saveCheckpoint(editor.rom, level.midpoint_start_y + i, *c);
+                    saveROMData(d);
+                    change = false;
                 }
 
                 if (calc)
@@ -3916,17 +4605,26 @@ void App::drawLevelView()
                 label = "Layer 2 X" + id;
                 temp = bg->bg2_x;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
                     bg->bg2_x = std::clamp(temp, 0, 0xFFFF);
+                    change |= true;
+                }
 
                 label = "Layer 2 Y" + id;
                 temp = bg->bg2_y;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
                     bg->bg2_y = std::clamp(temp, 0, 0xFFFF);
+                    change |= true;
+                }
 
                 label = "Layer 2 Screen ID" + id;
                 temp = bg->bg2_screenId;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
                     bg->bg2_screenId = std::clamp(temp, 0, 0xFF);
+                    change |= true;
+                }
 
                 label = "Layer 3 Position Data" + id;
                 ImGui::SeparatorText(label.c_str());
@@ -3934,17 +4632,32 @@ void App::drawLevelView()
                 label = "Layer 3 X" + id;
                 temp = bg->bg3_x;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
                     bg->bg3_x = std::clamp(temp, 0, 0xFFFF);
+                    change |= true;
+                }
 
                 label = "Layer 3 Y" + id;
                 temp = bg->bg3_y;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
                     bg->bg3_y = std::clamp(temp, 0, 0xFFFF);
+                    change |= true;
+                }
 
                 label = "Screen ID" + id;
                 temp = bg->scrollId;
                 if (ImGui::InputInt(label.c_str(), &temp))
+                {
                     bg->scrollId = std::clamp(temp, 0, 0xFF);
+                    change |= true;
+                }
+
+                if (change)
+                {
+                    MemoryDelta m = saveBGPositionData(editor.rom, level.bg_start + i * 10, *bg);
+                    saveROMData(m);
+                }
             }
         }
         ImGui::SetNextWindowSizeConstraints(
@@ -4065,8 +4778,18 @@ void App::drawScrollData()
         }
         ImGui::EndCombo();
     }
-
-    editor.scrollData[editor.currentScreenId] = scrollByte;
+    if (editor.scrollData[editor.currentScreenId] != scrollByte)
+    {
+        auto& names = editor.data[editor.mode].levelNames;
+        const std::string& levelName = names[editor.selectedLevel];
+        const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
+        MemoryDelta mem;
+        mem.oldData.push_back(editor.scrollData[editor.currentScreenId]);
+        mem.newData.push_back(scrollByte);
+        mem.address = level.scroll + editor.currentScreenId;
+        saveROMData(mem);
+        editor.scrollData[editor.currentScreenId] = scrollByte;
+    }
 
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(320, 240),
@@ -4121,26 +4844,38 @@ void App::drawScrollData()
     ImGui::End();
 }
 
-static void DrawBGScrollOptions(const char* label, BGSpeedData& data, float width, const char* idSuffix)
+static bool DrawBGScrollOptions(const char* label, BGSpeedData& data, float width, const char* idSuffix)
 {
+    bool change = false;
     ImGui::Text(label);
     ImGui::PushItemWidth(width);
 
     int temp = data.scanlines;
-    if(ImGui::InputInt(std::string("Scroll Speed ").append(idSuffix).c_str(), &temp))
+    if (ImGui::InputInt(std::string("Scroll Speed ").append(idSuffix).c_str(), &temp))
+    {
+        change = true;
         data.scanlines = std::clamp(temp, 0, 255);
+    }
 
     ImGui::SameLine();
 
     temp = data.frames;
-    if(ImGui::InputInt(std::string("Wait Frames ").append(idSuffix).c_str(), &temp))
+    if (ImGui::InputInt(std::string("Wait Frames ").append(idSuffix).c_str(), &temp))
+    {
+        change = true;
         data.frames = std::clamp(temp, 0, 255);
+    }
 
     ImGui::PopItemWidth();
+    return change;
 }
 
 void App::drawBGScrollData()
 {
+    auto& names = editor.data[editor.mode].levelNames;
+    const std::string& levelName = names[editor.selectedLevel];
+    const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
+
     constexpr std::array<uint8_t, 3> layer2Items[] = { 0x28, 0x29, 0x2A };
     constexpr std::array<uint8_t, 3> layer3Items[] = { 0x30, 0x31, 0x32 };
 
@@ -4184,8 +4919,9 @@ void App::drawBGScrollData()
 
     float width = ImGui::GetContentRegionAvail().x * 0.20f;
 
-    DrawBGScrollOptions("Horizontal Data", editor.bgScrollSpeeds[editor.currentScreenId][0], width, "##00");
-    DrawBGScrollOptions("Vertical Data", editor.bgScrollSpeeds[editor.currentScreenId][2], width, "##01");
+    bool speedChanged = false;
+    speedChanged |= DrawBGScrollOptions("Horizontal Data", editor.bgScrollSpeeds[editor.currentScreenId][0], width, "##00");
+    speedChanged |= DrawBGScrollOptions("Vertical Data", editor.bgScrollSpeeds[editor.currentScreenId][2], width, "##01");
 
     label = "Background Layer 3 ID: " + std::to_string(editor.currentScreenId);
 
@@ -4211,8 +4947,19 @@ void App::drawBGScrollData()
         ImGui::EndCombo();
     }
 
-    DrawBGScrollOptions("Horizontal Data", editor.bgScrollSpeeds[editor.currentScreenId][1], width, "##02");
-    DrawBGScrollOptions("Vertical Data", editor.bgScrollSpeeds[editor.currentScreenId][3], width, "##03");
+    speedChanged |= DrawBGScrollOptions("Horizontal Data", editor.bgScrollSpeeds[editor.currentScreenId][1], width, "##02");
+    speedChanged |= DrawBGScrollOptions("Vertical Data", editor.bgScrollSpeeds[editor.currentScreenId][3], width, "##03");
+
+    if (editor.rebuildBackgrounds)
+    {
+        MemoryDelta mem = saveBGTilemapMirror(editor.rom, level.bg_mirror + editor.currentScreenId * 2, tm);
+        saveROMData(mem);
+    }
+    if (speedChanged)
+    {
+        MemoryDelta mem = saveBGScrollSpeeds(editor.rom, level.bg_speed + editor.currentScreenId * 4, editor.bgScrollSpeeds[editor.currentScreenId]);
+        saveROMData(mem);
+    }
 
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(320, 240),
@@ -4299,7 +5046,7 @@ void App::drawBGScrollData()
     ImGui::End();
 }
 
-void App::saveROMData()
+/*void App::saveROMData()
 {
     auto& names = editor.data[editor.mode].levelNames;
     const std::string& levelName = names[editor.selectedLevel];
@@ -4344,6 +5091,18 @@ void App::saveROMData()
         saveBGPositionData(editor.rom, level.bg_checkpoint, editor.bgPositionData[1]);
         saveBGPositionData(editor.rom, level.bg_boss, editor.bgPositionData[2]);
     }
+}*/
+
+void App::saveROMData(DataChanged& d)
+{
+    saveDataToROM(editor.undoStack, editor.redoStack, editor.rom, d);
+}
+
+void App::saveROMData(MemoryDelta& m)
+{
+    DataChanged d;
+    d.deltas.push_back(m);
+    saveDataToROM(editor.undoStack, editor.redoStack, editor.rom, d);
 }
 
 void App::shutdown()

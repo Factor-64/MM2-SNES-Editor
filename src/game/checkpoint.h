@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <vector>
+#include "../undoredo.h"
 
 struct Checkpoint {
     uint8_t y = 0;
@@ -26,7 +27,7 @@ struct BGPositionData {
 using Checkpoints = std::array<Checkpoint, 3>;
 
 Checkpoints loadCheckpoints(std::vector<uint8_t>& rom, uint32_t addr);
-void saveCheckpoints(std::vector<uint8_t>& rom, uint32_t addr, const Checkpoints& c);
+DataChanged saveCheckpoint(std::vector<uint8_t>& rom, uint32_t addr, const Checkpoint& c);
 
-BGPositionData loadBGPositionData(const std::vector<uint8_t>& rom, uint32_t addr);
-void saveBGPositionData(std::vector<uint8_t>& rom, uint32_t addr, const BGPositionData& data);
+std::array<BGPositionData, 3> loadBGPositionData(const std::vector<uint8_t>& rom, uint32_t addr);
+MemoryDelta saveBGPositionData(std::vector<uint8_t>& rom, uint32_t addr, const BGPositionData& data);
