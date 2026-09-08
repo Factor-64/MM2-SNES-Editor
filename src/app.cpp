@@ -921,7 +921,8 @@ void App::drawTilesetWindow()
                 }
             }
 
-            writeAnimatedPalettes(editor.rom, level.palette_anime, editor.isHiROM, editor.animate);
+            if(!editor.animate.frames.empty())
+                writeAnimatedPalettes(editor.rom, level.palette_anime, editor.isHiROM, editor.animate);
 
             editor.bgScrollData = loadBackgroundScrollData(editor.rom, level.bg_scroll);
             editor.bgPositionData = loadBGPositionData(editor.rom, level.bg_start);
@@ -1322,23 +1323,25 @@ void App::DrawAnimatedPalettes(int colorsPerPalette,
             editor.isHiROM,
             editor.palettes
         );
-
-        if (editor.mode != 0 && frameCount > 0)
+        if (frameCount > 0)
         {
-            if ((editor.animate.palette_bits & 0x30) != 0x30)
+            if (editor.mode != 0)
             {
-                editor.animate.palette_bits |= 0x30;
-
-                auto p2 = decodeCGRAMPalettes(editor.rom, level.palette_layer2, 2);
-                for (int i = 0; i < frameCount; ++i)
+                if ((editor.animate.palette_bits & 0x30) != 0x30)
                 {
-                    int base = i * 6;
-                    editor.animate.frames[base + 4] = p2[0];
-                    editor.animate.frames[base + 5] = p2[1];
+                    editor.animate.palette_bits |= 0x30;
+
+                    auto p2 = decodeCGRAMPalettes(editor.rom, level.palette_layer2, 2);
+                    for (int i = 0; i < frameCount; ++i)
+                    {
+                        int base = i * 6;
+                        editor.animate.frames[base + 4] = p2[0];
+                        editor.animate.frames[base + 5] = p2[1];
+                    }
                 }
             }
+            writeAnimatedPalettes(editor.rom, level.palette_anime, editor.isHiROM, editor.animate);
         }
-        writeAnimatedPalettes(editor.rom, level.palette_anime, editor.isHiROM, editor.animate);
     }
 
     ImGui::PopItemWidth();
