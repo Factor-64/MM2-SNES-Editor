@@ -2,6 +2,7 @@
 #include "lodepng.h"
 #include <fstream>
 #include <iostream>
+#include <print>
 
 #pragma pack(push, 1)
 struct BMPFileHeader {
@@ -34,7 +35,7 @@ struct RGBQUAD {
 };
 #pragma pack(pop)
 
-bool loadIndexedBMP(const std::string& filename, Palette& palette, std::vector<uint8_t>& pixels, int& width, int& height) 
+bool loadIndexedBMP(const std::string& filename, Palettes& palettes, std::vector<uint8_t>& pixels, int& width, int& height) 
 {
     std::ifstream file(filename, std::ios::binary);
     if (!file) return false;
@@ -58,16 +59,26 @@ bool loadIndexedBMP(const std::string& filename, Palette& palette, std::vector<u
     int paletteCount = ih.biClrUsed ? ih.biClrUsed : (1 << ih.biBitCount);
 
     // BMP stores BGRA palette
-    for (int i = 0; i < 16; ++i) 
+    unsigned currentColor = 0;
+
+    for (int i = 0; i < palettes.size(); ++i)
     {
-        RGBQUAD color = { 0,0,0,0 };
-        if (i < paletteCount)
+        auto& p = palettes[i];
+
+        for (int x = 0; x < p.size(); ++x)
+        {
+            if (currentColor >= paletteCount)
+                break;
+
+            RGBQUAD color;
             file.read((char*)&color, sizeof(color));
 
-        palette[i].r = color.red;
-        palette[i].g = color.green;
-        palette[i].b = color.blue;
-        palette[i].a = 255;
+            p[x].r = color.red;
+            p[x].g = color.green;
+            p[x].b = color.blue;
+
+            ++currentColor;
+        }
     }
 
     file.seekg(fh.bfOffBits, std::ios::beg);
@@ -99,7 +110,7 @@ bool loadIndexedBMP(const std::string& filename, Palette& palette, std::vector<u
     return true;
 }
 
-bool loadIndexedPNG(const std::string& filename, Palette& palette, std::vector<uint8_t>& pixels, int& width, int& height)
+bool loadIndexedPNG(const std::string& filename, Palettes& palettes, std::vector<uint8_t>& pixels, int& width, int& height)
 {
     std::vector<unsigned char> fileBuffer;
     unsigned error = lodepng::load_file(fileBuffer, filename);
@@ -125,14 +136,18 @@ bool loadIndexedPNG(const std::string& filename, Palette& palette, std::vector<u
 
     unsigned char* pngPalette = state.info_png.color.palette;
     unsigned paletteSize = state.info_png.color.palettesize;
-
-    for (int i = 0; i < 16; ++i)
+    unsigned currentColor = 0;
+    for (int i = 0; i < palettes.size(); ++i)
     {
-        if (i < paletteSize)
+        auto& p = palettes[i];
+        for (int x = 0; x < p.size(); ++x)
         {
-            palette[i].r = pngPalette[i * 4 + 0];
-            palette[i].g = pngPalette[i * 4 + 1];
-            palette[i].b = pngPalette[i * 4 + 2];
+            if (currentColor > paletteSize)
+                break;
+            p[x].r = pngPalette[currentColor * 4 + 0];
+            p[x].g = pngPalette[currentColor * 4 + 1];
+            p[x].b = pngPalette[currentColor * 4 + 2];
+            ++currentColor;
         }
     }
 

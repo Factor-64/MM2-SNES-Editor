@@ -85,12 +85,13 @@ private:
     };
 
     struct ImageData {
-        Palette pal;
+        Palettes pals;
         std::vector<Tile> tiles4bpp;
         std::vector<Tile> tiles2bpp;
         TilemapTexture texture;
         bool is2bpp = false;
         bool reload = false;
+        int currentPal = 0;
     };
 
     struct EditorState {
@@ -103,6 +104,7 @@ private:
         bool rebuildView = true;
         bool rebuildEdit = true;
         bool rebuildData = true;
+        bool rebuildGraphics = true;
         bool universalBGColor = false;
         bool animatePalettes = false;
         bool inLevelRegion = false;

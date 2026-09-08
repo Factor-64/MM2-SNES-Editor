@@ -200,9 +200,9 @@ void App::handleFileDialogResult(const std::string& key)
         bool success = false;
 
         if (ext == "png")
-            success = loadIndexedPNG(path, editor.image.pal, pixels, width, height);
+            success = loadIndexedPNG(path, editor.image.pals, pixels, width, height);
         else if (ext == "bmp")
-            success = loadIndexedBMP(path, editor.image.pal, pixels, width, height);
+            success = loadIndexedBMP(path, editor.image.pals, pixels, width, height);
 
         if (success)
         {
@@ -874,6 +874,7 @@ void App::drawTilesetWindow()
         editor.rebuildTileset = true;
         editor.rebuildEdit = true;
         editor.rebuildBackgrounds = true;
+        editor.rebuildGraphics = true;
 
         editor.levelTiles = decodeTileRanges(levelGfx.layer12, editor.rom, 32);
         editor.levelTileMap = makeTileMap(editor.levelTiles, 16, 1);
@@ -2528,7 +2529,6 @@ void App::drawGraphicsWindow()
     static std::vector<Tile> tiles;
     static TilemapTexture tex;
     static uint8_t shape = 0;
-    static bool rebuild = false;
     static bool imgPal = false;
     static bool imgClicked = false;
     static bool continueCopy = false;
@@ -2644,7 +2644,7 @@ void App::drawGraphicsWindow()
             if (ImGui::Selectable(displayList[i], selected))
             {
                 shape = i;
-                rebuild = true;
+                editor.rebuildGraphics = true;
             }
         }
         ImGui::EndCombo();
@@ -2665,7 +2665,7 @@ void App::drawGraphicsWindow()
                 if (ImGui::Selectable(formatList[i], selected))
                 {
                     tileDisplay = i;
-                    rebuild = true;
+                    editor.rebuildGraphics = true;
                 }
             }
             ImGui::EndCombo();
@@ -2676,7 +2676,7 @@ void App::drawGraphicsWindow()
         if (tileDisplay != 1)
         {
             tileDisplay = 1;
-            rebuild = true;
+            editor.rebuildGraphics = true;
         }
     }
 
@@ -2702,7 +2702,7 @@ void App::drawGraphicsWindow()
             {
                 palChange = true;
                 paletteIndex = i;
-                rebuild = true;
+                editor.rebuildGraphics = true;
             }
         }
         ImGui::EndCombo();
@@ -2721,7 +2721,7 @@ void App::drawGraphicsWindow()
                 {
                     palChange = true;
                     subPaletteIndex = i;
-                    rebuild = true;
+                    editor.rebuildGraphics = true;
                 }
             }
             ImGui::EndCombo();
@@ -2739,12 +2739,12 @@ void App::drawGraphicsWindow()
             menuState = MS_ImportGraphics;
     }
 
-    if (range.end != range.start + range_max || tex.tex == 0 || rebuild)
+    if (range.end != range.start + range_max || tex.tex == 0 || editor.rebuildGraphics)
     {
         if(!palChange)
             ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
-        editor.image.reload = rebuild;
-        rebuild = false;
+        editor.image.reload = editor.rebuildGraphics;
+        editor.rebuildGraphics = false;
         range.end = range.start + range_max;
         int mapWidth = shape == 2 ? 8 : 16;
         tiles = decodeTileRange(range, editor.rom, formatSize[tileDisplay]);
@@ -2757,7 +2757,7 @@ void App::drawGraphicsWindow()
 
         ColorRGBA bgColor;
 
-        renderTileMapToRGBA(tilemap, tiles, imgPal ? editor.image.pal : editor.aniPalettes[paletteIndex], bgColor, outPixels, tex.width, tex.height);
+        renderTileMapToRGBA(tilemap, tiles, imgPal ? editor.image.pals[editor.image.currentPal] : editor.aniPalettes[paletteIndex], bgColor, outPixels, tex.width, tex.height);
         uploadTilemapTextureRGBA(outPixels, tex);
     }
 
@@ -2766,7 +2766,7 @@ void App::drawGraphicsWindow()
     if (!imgTiles.empty())
     {
         if (ImGui::Checkbox("Use Image Palette", &imgPal))
-            rebuild = true;
+            editor.rebuildGraphics = true;
 
         ImGui::Text("Right click a PGR Tile and an Image tile to link them");
 
@@ -2783,7 +2783,7 @@ void App::drawGraphicsWindow()
 
             ColorRGBA bgColor;
 
-            renderTileMapToRGBA(tilemap, imgTiles, imgPal ? editor.image.pal : editor.aniPalettes[paletteIndex], bgColor, outPixels, editor.image.texture.width, editor.image.texture.height);
+            renderTileMapToRGBA(tilemap, imgTiles, imgPal ? editor.image.pals[editor.image.currentPal] : editor.aniPalettes[paletteIndex], bgColor, outPixels, editor.image.texture.width, editor.image.texture.height);
             uploadTilemapTextureRGBA(outPixels, editor.image.texture);
         }
     }
@@ -2880,7 +2880,7 @@ void App::drawGraphicsWindow()
                     continueCopy = false;
                 }
             }
-            rebuild = true;
+            editor.rebuildGraphics = true;
         }
         label = "<< Replace Linked Tiles ";
         if (ImGui::Button(label.c_str(), ImVec2(200, 0)))
@@ -2891,13 +2891,35 @@ void App::drawGraphicsWindow()
                 int B = linkFromTile[A];
                 if (B < 0) continue;
                 if (B >= static_cast<int>(imgTiles.size())) continue;
-                tiles[A].pixels = imgTiles[B].pixels;
-                MemoryDelta mem = saveTileToROM(tiles[A], editor.rom, is2bpp);
-                data.deltas.push_back(mem);
-                rebuild = true;
+                int amount = 1;
+                int idxA = A;
+                int idxB = B;
+                switch (shape)
+                {
+                case 1:
+                    amount = 2;
+                    idxA = idxA << 1;
+                    idxB = idxB << 1;
+                    break;
+                case 2:
+                    amount = 4;
+                    idxA *= 4;
+                    idxB *= 4;
+                    break;
+                }
+                for (int i = 0; i < amount; ++i)
+                {
+                    tiles[idxA + i].pixels = imgTiles[idxB + i].pixels;
+                    MemoryDelta mem = saveTileToROM(tiles[idxA + i], editor.rom, is2bpp);
+                    data.deltas.push_back(mem);
+                }
+                editor.rebuildGraphics = true;
             }
-            if(rebuild)
+            if (editor.rebuildGraphics)
+            {
+                saveROMData(data);
                 ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
+            }
         }
 
         if (continueCopy)
@@ -2920,16 +2942,33 @@ void App::drawGraphicsWindow()
                 Palette pal = editor.aniPalettes[paletteIndex];
                 int base = subPaletteIndex * 4;
                 for (int i = 0; i < 4; ++i)
-                    pal[base + i] = editor.image.pal[base + i];
+                    pal[base + i] = editor.image.pals[editor.image.currentPal][base + i];
                 writeSNESPaletteToROM(paletteIndex, pal, level);
             }
             else
             {
                 if (editor.mode)
-                    writeSNESPaletteToROM(paletteIndex, editor.image.pal, level);
+                    writeSNESPaletteToROM(paletteIndex, editor.image.pals[editor.image.currentPal], level);
                 else
-                    writeNESPaletteToROM(paletteIndex, editor.image.pal, level);
+                    writeNESPaletteToROM(paletteIndex, editor.image.pals[editor.image.currentPal], level);
             }
+        }
+
+        label = "IMG Pal " + std::to_string(editor.image.currentPal);
+        ImGui::SetNextItemWidth(200);
+        if (ImGui::BeginCombo("##IPI", label.c_str()))
+        {
+            for (int i = 0; i < editor.image.pals.size(); ++i)
+            {
+                bool selected = editor.image.currentPal == i;
+                label = "IMG Pal " + std::to_string(i);
+                if (ImGui::Selectable(label.c_str(), selected))
+                {
+                    editor.image.currentPal = i;
+                    editor.rebuildGraphics = true;
+                }
+            }
+            ImGui::EndCombo();
         }
 
         ImGui::EndGroup();
@@ -2938,8 +2977,8 @@ void App::drawGraphicsWindow()
         int trueW = editor.image.texture.width * editor.graphicsZoom;
         int trueH = editor.image.texture.height * editor.graphicsZoom;
         ImGui::BeginChild("IndexedImage", ImVec2(trueW, trueH), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-        DrawNearestImage(dl, editor.image.texture, ImVec2(trueW, trueH), ImVec2(0, 0), ImVec2(1, 1));
         ImDrawList* dl2 = ImGui::GetWindowDrawList();
+        DrawNearestImage(dl2, editor.image.texture, ImVec2(trueW, trueH), ImVec2(0, 0), ImVec2(1, 1));
         ImVec2 imin = ImGui::GetItemRectMin();
         ImVec2 imax = ImGui::GetItemRectMax();
 
@@ -3019,7 +3058,7 @@ void App::drawGraphicsWindow()
         int psize = 4;
         if (imgPal)
         {
-            pal = editor.image.pal;
+            pal = editor.image.pals[editor.image.currentPal];
             if (!is2bpp)
                 psize = pal.size();
         }
@@ -3068,7 +3107,7 @@ void App::drawGraphicsWindow()
 
             MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
             data.deltas.push_back(mem);
-            rebuild = true;
+            editor.rebuildGraphics = true;
         }
         else if (!data.deltas.empty() && !result.down)
         {
