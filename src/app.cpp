@@ -890,7 +890,7 @@ void App::drawTilesetWindow()
             editor.layer2TileData = loadBackgroundTileData(editor.rom, level.bg_tilemap, 0x1000);
             editor.layer3TileData = loadBackgroundTileData(editor.rom, level.bg_tilemap + 0x1000, 0x1000);
 
-            auto meta = decodeMetaTile32SNES(editor.rom, level.chip32x32, level.collision, 0x400);
+            editor.levelMetaTiles = decodeMetaTile32SNES(editor.rom, level.chip32x32, level.collision, 0x400);
 
             editor.palettes = decodeCGRAMPalettes(editor.rom, level.palette_data, 16);
 
@@ -930,14 +930,13 @@ void App::drawTilesetWindow()
             editor.bgTilemapMirror = loadBGTilemapMirror(editor.rom, level.bg_mirror);
             editor.bgScrollSpeeds = loadBGScrollSpeeds(editor.rom, level.bg_speed);
 
-            loadMetaTilePalettes(meta, editor.rom, level.chip32x32_palette, 0x100);
+            loadMetaTilePalettes(editor.levelMetaTiles, editor.rom, level.chip32x32_palette, 0x100);
 
             editor.levelMacroTiles = buildMacroTiles(editor.levelTileMap);
-            editor.levelMetaTiles = makeMetaTiles(meta, editor.levelMacroTiles);
         }
         else
         {
-            auto meta = decodeMetaTile32NES(editor.rom, level.chip32x32, 0x400);
+            editor.levelMetaTiles = decodeMetaTile32NES(editor.rom, level.chip32x32, 0x400);
             editor.palettes = makeNESPalettes(editor.rom, level.palette_data, editor.nesMasterPalette);
             editor.animate = loadAnimatedPalettesNES(
                 editor.rom,
@@ -947,10 +946,9 @@ void App::drawTilesetWindow()
                 editor.nesMasterPalette
             );
 
-            loadMetaTilePalettes(meta, editor.rom, level.chip32x32_palette, 0x100);
+            loadMetaTilePalettes(editor.levelMetaTiles, editor.rom, level.chip32x32_palette, 0x100);
 
             editor.levelMacroTiles = buildMacroTiles(editor.levelTileMap);
-            editor.levelMetaTiles = makeMetaTiles(meta, editor.levelMacroTiles);
         }
 
         editor.levelData = loadLevelData(editor.rom, level.map, 0xB00);
@@ -1979,7 +1977,7 @@ inline void DrawHoverHighlight(ImDrawList* dl, const ImVec2& min, int w, int h, 
     dl->AddRect(p0, p1, IM_COL32(100, 150, 255, 255), 0.0f, 0, 2.0f);
 }
 
-inline void DrawSelectedOutline(ImDrawList* dl, const ImVec2& min, int w, int h, int x, int y, ImU32 color = IM_COL32(255, 255, 0, 40), bool outline = true)
+inline void DrawSelectedOutline(ImDrawList* dl, const ImVec2& min, int w, int h, int x, int y, ImU32 color = IM_COL32(255, 255, 0, 40), ImU32 color2 = IM_COL32(255, 255, 0, 255), bool fill = true, bool outline = true)
 {
     const float x0 = min.x + float(x * w);
     const float y0 = min.y + float(y * h);
@@ -1989,10 +1987,13 @@ inline void DrawSelectedOutline(ImDrawList* dl, const ImVec2& min, int w, int h,
     const ImVec2 p0(x0, y0);
     const ImVec2 p1(x1, y1);
 
-    dl->AddRectFilled(p0, p1, color);
+    const ImU32 fillColor =
+        fill ? color : IM_COL32(255, 255, 0, 0);
+
+    dl->AddRectFilled(p0, p1, fillColor);
 
     const ImU32 outlineColor =
-        outline ? IM_COL32(255, 255, 0, 255) : IM_COL32(255, 255, 0, 0);
+        outline ? color2 : IM_COL32(255, 255, 0, 0);
 
     dl->AddRect(p0, p1, outlineColor, 0.0f, 0, 2.0f);
 }
@@ -2048,9 +2049,9 @@ inline DataChanged App::PaintMetaTile(int tileX, int tileY, int atlasWidth, cons
 
     const int metaX = tileX >> 1;
     const int metaY = tileY >> 1;
-    const int metaTileIndex = (metaY * 16) + metaX;
+    const unsigned metaTileIndex = (metaY * 16) + metaX;
 
-    if ((unsigned)metaTileIndex >= editor.levelMetaTiles.size())
+    if (metaTileIndex >= editor.levelMetaTiles.size())
         return d;
 
     const int localIndex = ((tileY & 1) << 1) | (tileX & 1);
@@ -2062,23 +2063,11 @@ inline DataChanged App::PaintMetaTile(int tileX, int tileY, int atlasWidth, cons
     if (!color)
     {
         const auto& srcMacro = editor.levelMacroTiles[editor.selectedTile];
-        auto& dstTile = meta.tiles[localIndex];
+        auto& dstTile = meta.tileIndexes[localIndex];
 
-        if (dstTile.left.index != srcMacro.left.index)
+        if (dstTile != editor.selectedTile)
         {
-            dstTile.left = srcMacro.left;
-            changed = true;
-        }
-
-        if (dstTile.right.index != srcMacro.right.index)
-        {
-            dstTile.right = srcMacro.right;
-            changed = true;
-        }
-
-        if (meta.macroIndex[localIndex] != editor.selectedTile)
-        {
-            meta.macroIndex[localIndex] = editor.selectedTile;
+            dstTile = editor.selectedTile;
             changed = true;
         }
     }
@@ -2100,7 +2089,7 @@ inline DataChanged App::PaintMetaTile(int tileX, int tileY, int atlasWidth, cons
     d = saveMetaTileToROM(
         editor.rom,
         level.chip32x32 + trueIndex,
-        level.chip32x32_palette + trueIndex,
+        level.chip32x32_palette + metaTileIndex,
         level.collision + trueIndex,
         meta
     );
@@ -2432,6 +2421,7 @@ App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY,
 
 void HandleTileLink(int idx, bool prg, std::array<int, 1024>& linkFromTile, std::unordered_map<int, int>& linkFromImgTile, int& linkingTile, bool& linkingPRG)
 {
+    static bool last = 0;
     if (prg)
     {
         if (linkFromTile[idx] != -1)
@@ -2455,8 +2445,9 @@ void HandleTileLink(int idx, bool prg, std::array<int, 1024>& linkFromTile, std:
         }
     }
 
-    if (linkingTile == -1)
+    if (linkingTile == -1 || last == prg)
     {
+        last = prg;
         linkingTile = idx;
         linkingPRG = prg;
         return;
@@ -2510,7 +2501,7 @@ inline ImU32 ColorFromIndex(int idx)
     const ImU32 G = (ImU32)(g * 255.0f);
     const ImU32 B = (ImU32)(b * 255.0f);
 
-    return IM_COL32(R, G, B, 60);
+    return IM_COL32(R, G, B, 255);
 }
 
 void App::drawGraphicsWindow()
@@ -2741,7 +2732,7 @@ void App::drawGraphicsWindow()
 
     if (range.end != range.start + range_max || tex.tex == 0 || editor.rebuildGraphics)
     {
-        if(!palChange)
+        if (!palChange)
             ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
         editor.image.reload = editor.rebuildGraphics;
         editor.rebuildGraphics = false;
@@ -2773,6 +2764,8 @@ void App::drawGraphicsWindow()
         if (editor.image.reload)
         {
             editor.image.reload = false;
+            if (!palChange)
+                ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
             int mapWidth = shape == 2 ? 8 : 16;
             TileMap tilemap = makeTileMap(imgTiles, mapWidth, shape);
 
@@ -2909,11 +2902,14 @@ void App::drawGraphicsWindow()
                 }
                 for (int i = 0; i < amount; ++i)
                 {
-                    tiles[idxA + i].pixels = imgTiles[idxB + i].pixels;
+                    int newA = idxA + i;
+                    int newB = idxB + i;
+                    if (newB >= static_cast<int>(imgTiles.size())) break;
+                    tiles[newA].pixels = imgTiles[newB].pixels;
                     MemoryDelta mem = saveTileToROM(tiles[idxA + i], editor.rom, is2bpp);
                     data.deltas.push_back(mem);
+                    editor.rebuildGraphics = true;
                 }
-                editor.rebuildGraphics = true;
             }
             if (editor.rebuildGraphics)
             {
@@ -3010,14 +3006,14 @@ void App::drawGraphicsWindow()
                 int x = linkingTile % atlasW;
                 int y = linkingTile / atlasW;
 
-                DrawSelectedOutline(dl2, imin, tileW, tileH, x, y, IM_COL32(255, 255, 255, 128), false);
+                DrawSelectedOutline(dl2, imin, tileW, tileH, x, y, IM_COL32(255, 255, 255, 128), IM_COL32(255, 255, 255, 128), false);
             }
             else
             {
                 int x = linkingTile % atlasWidth;
                 int y = linkingTile / atlasWidth;
 
-                DrawSelectedOutline(dl, min, tileW, tileH, x, y, IM_COL32(255, 255, 255, 128), false);
+                DrawSelectedOutline(dl, min, tileW, tileH, x, y, IM_COL32(255, 255, 255, 128), IM_COL32(255, 255, 255, 128), false);
             }
         }
 
@@ -3028,11 +3024,11 @@ void App::drawGraphicsWindow()
                 int ax = A % atlasWidth;
                 int ay = A / atlasWidth;
                 ImU32 color = ColorFromIndex(A);
-                DrawSelectedOutline(dl, min, tileW, tileH, ax, ay, color, false);
+                DrawSelectedOutline(dl, min, tileW, tileH, ax, ay, IM_COL32(255, 255, 255, 128), color, false);
                 
                 ax = linkFromTile[A] % atlasW;
                 ay = linkFromTile[A] / atlasW;
-                DrawSelectedOutline(dl2, imin, tileW, tileH, ax, ay, color, false);
+                DrawSelectedOutline(dl2, imin, tileW, tileH, ax, ay, IM_COL32(255, 255, 255, 128), color, false);
             }
         }
 
@@ -3161,7 +3157,7 @@ void App::drawEditMode()
             case EM_Collision:
             case EM_Metatiles: {
                 uint8_t offset = editor.mode == 0 ? 0 : 2;
-                renderMetaTileMapToRGBA(editor.levelMetaTiles, 16, editor.levelTiles, editor.aniPalettes, offset, bgColor, outPixels, tilegrid.width, tilegrid.height);
+                renderMetaTileMapToRGBA(editor.levelMetaTiles, editor.levelMacroTiles, 16, editor.levelTiles, editor.aniPalettes, offset, bgColor, outPixels, tilegrid.width, tilegrid.height);
                 break;
             }
         }
@@ -3249,7 +3245,7 @@ void App::drawEditMode()
                     const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
 
                     int trueIndex = metaIndex * 4;
-                    DataChanged d = saveMetaTileToROM(editor.rom, level.chip32x32 + trueIndex, level.chip32x32_palette + trueIndex, level.collision + trueIndex, editor.levelMetaTiles[metaIndex]);
+                    DataChanged d = saveMetaTileToROM(editor.rom, level.chip32x32 + trueIndex, level.chip32x32_palette + metaIndex, level.collision + trueIndex, editor.levelMetaTiles[metaIndex]);
                     data.deltas.insert(data.deltas.end(), d.deltas.begin(), d.deltas.end());
                 }
             }
@@ -3312,7 +3308,7 @@ void App::drawEditMode()
                         int localX = tileX % 2;
                         int localY = tileY % 2;
                         int localIndex = localY * 2 + localX;
-                        editor.selectedTile = editor.levelMetaTiles[metaTileIndex].macroIndex[localIndex];
+                        editor.selectedTile = editor.levelMetaTiles[metaTileIndex].tileIndexes[localIndex];
                     }
                     break;
                 }      
@@ -3393,7 +3389,7 @@ void App::drawTileView()
                 tileSize = 32;
                 scale = 1.0f;
                 uint8_t offset = editor.mode == 0 ? 0 : 2;
-                renderMetaTileMapToRGBA(editor.levelMetaTiles, 16, editor.levelTiles, editor.aniPalettes, offset, bgColor, outPixels, editor.tileset.width, editor.tileset.height);
+                renderMetaTileMapToRGBA(editor.levelMetaTiles, editor.levelMacroTiles, 16, editor.levelTiles, editor.aniPalettes, offset, bgColor, outPixels, editor.tileset.width, editor.tileset.height);
                 break;
             }
         }
@@ -3603,6 +3599,7 @@ void App::drawLevelView()
             windowX,
             windowWidth,
             editor.levelMetaTiles,
+            editor.levelMacroTiles,
             editor.levelTiles,
             editor.aniPalettes,
             offset,

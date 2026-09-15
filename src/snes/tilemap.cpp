@@ -194,30 +194,42 @@ void blitMacroTileToRGBA(
 
 void blitMetaTileToRGBA(
     const MetaTile& meta,
+    const std::vector<MacroTile>& macroTiles,
     const std::vector<Tile>& atlas,
     const Palettes& palettes,
-    const uint8_t palOffset,
+    uint8_t palOffset,
     const ColorRGBA& bgColor,
     ColorRGBA* out,
     int bufW,
     int px,
     int py)
 {
-    // Top-left
-    blitMacroTileToRGBA(meta.tiles[0], atlas, palettes[meta.palettes[0] + palOffset], bgColor, out, bufW, px, py);
+    for (int i = 0; i < 4; ++i)
+    {
+        uint8_t macroIndex = meta.tileIndexes[i];
+        if (macroIndex >= macroTiles.size()) continue;
 
-    // Top-right
-    blitMacroTileToRGBA(meta.tiles[1], atlas, palettes[meta.palettes[1] + palOffset], bgColor, out, bufW, px + 16, py);
+        const MacroTile& macro = macroTiles[macroIndex];
 
-    // Bottom-left
-    blitMacroTileToRGBA(meta.tiles[2], atlas, palettes[meta.palettes[2] + palOffset], bgColor, out, bufW, px, py + 16);
+        int ox = px + (i % 2) * 16; // left/right
+        int oy = py + (i / 2) * 16; // top/bottom
 
-    // Bottom-right
-    blitMacroTileToRGBA(meta.tiles[3], atlas, palettes[meta.palettes[3] + palOffset], bgColor, out, bufW, px + 16, py + 16);
+        blitMacroTileToRGBA(
+            macro,
+            atlas,
+            palettes[meta.palettes[i] + palOffset],
+            bgColor,
+            out,
+            bufW,
+            ox,
+            oy
+        );
+    }
 }
 
 void renderMetaTileMapToRGBA(
     const std::vector<MetaTile>& metaTiles,
+    const std::vector<MacroTile>& macroTiles,
     int metaWidth,
     const std::vector<Tile>& atlas,
     const Palettes& palettes,
@@ -254,6 +266,7 @@ void renderMetaTileMapToRGBA(
 
             blitMetaTileToRGBA(
                 meta,
+                macroTiles,
                 atlas,
                 palettes,
                 palOffset,
@@ -270,12 +283,13 @@ void renderMetaTileMapToRGBA(
 void renderMetaTileWindowToRGBA(
     const std::vector<uint8_t>& metaIndices,
     int fullMetaWidth,
-    int windowX,              // starting meta-tile X
-    int windowWidth,          // number of meta-tiles to draw
+    int windowX,
+    int windowWidth,
     const std::vector<MetaTile>& metaTiles,
+    const std::vector<MacroTile>& macroTiles,   // <-- REQUIRED
     const std::vector<Tile>& atlas,
     const Palettes& palettes,
-    const uint8_t palOffset,
+    uint8_t palOffset,
     const ColorRGBA& bgColor,
     std::vector<ColorRGBA>& outPixels,
     int& outW,
@@ -306,6 +320,7 @@ void renderMetaTileWindowToRGBA(
 
             blitMetaTileToRGBA(
                 meta,
+                macroTiles,
                 atlas,
                 palettes,
                 palOffset,

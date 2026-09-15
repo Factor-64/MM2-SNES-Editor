@@ -33,18 +33,28 @@ void uploadTilemapTextureRGBA(const std::vector<ColorRGBA>& pixels, TilemapTextu
 
 std::vector<MacroTile> buildMacroTiles(const TileMap& map);
 
-void renderMetaTileMapToRGBA(const std::vector<MetaTile>& metaTiles, int metaWidth, const std::vector<Tile>& atlas, 
-    const Palettes& palettes, const uint8_t palOffset, const ColorRGBA& bgColor, std::vector<ColorRGBA>& outPixels, int& width, int& height);
+void renderMetaTileMapToRGBA(
+    const std::vector<MetaTile>& metaTiles,
+    const std::vector<MacroTile>& macroTiles,
+    int metaWidth,
+    const std::vector<Tile>& atlas,
+    const Palettes& palettes,
+    const uint8_t palOffset,
+    const ColorRGBA& bgColor,
+    std::vector<ColorRGBA>& outPixels,
+    int& width,
+    int& height);
 
 void renderMetaTileWindowToRGBA(
     const std::vector<uint8_t>& metaIndices,
     int fullMetaWidth,
-    int windowX,              // starting meta-tile X
-    int windowWidth,          // number of meta-tiles to draw
+    int windowX,
+    int windowWidth,
     const std::vector<MetaTile>& metaTiles,
+    const std::vector<MacroTile>& macroTiles,
     const std::vector<Tile>& atlas,
     const Palettes& palettes,
-    const uint8_t palOffset,
+    uint8_t palOffset,
     const ColorRGBA& bgColor,
     std::vector<ColorRGBA>& outPixels,
     int& outW,

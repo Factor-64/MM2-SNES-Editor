@@ -56,6 +56,9 @@ bool loadIndexedBMP(const std::string& filename, Palettes& palettes, std::vector
     width = ih.biWidth;
     height = ih.biHeight;
 
+    Palettes pals;
+    palettes = pals;
+
     int paletteCount = ih.biClrUsed ? ih.biClrUsed : (1 << ih.biBitCount);
 
     // BMP stores BGRA palette
@@ -133,6 +136,9 @@ bool loadIndexedPNG(const std::string& filename, Palettes& palettes, std::vector
 
     width = w;
     height = h;
+
+    Palettes pals;
+    palettes = pals;
 
     unsigned char* pngPalette = state.info_png.color.palette;
     unsigned paletteSize = state.info_png.color.palettesize;
