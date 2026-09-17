@@ -58,7 +58,8 @@ private:
         AW_Palette,
         AW_Tileset,
         AW_Editor,
-        AW_Graphics
+        AW_Graphics,
+        AW_Level
     };
 
     enum PaletteType : int {
@@ -107,7 +108,6 @@ private:
         bool rebuildGraphics = true;
         bool universalBGColor = false;
         bool animatePalettes = false;
-        bool inLevelRegion = false;
         bool paintMode = false;
         bool hFlip = false;
         bool vFlip = false;
@@ -123,6 +123,7 @@ private:
         int tilesetZoom = 1;
         int editorZoom = 1;
         int graphicsZoom = 2;
+        int levelZoom = 1;
 
         int layer2Scanlines = 0;
         int layer3Scanlines = 0;
@@ -171,6 +172,7 @@ private:
         int subPaletteIndex = 0;
         int aniPalIndex = 0;
         int selectedTile = -1;
+        int selectedMetaTile = -1;
         int editingPalette = -1;
         int editingColor = -1;
         int selectedObject = -1;
@@ -241,6 +243,7 @@ private:
     void saveBinaryGFX(LevelField field, std::string levelName, int mode);
     void saveBinaryPaletteAnimation(const LevelEntry& level, const std::string levelName, int mode);
     void openExportDialog(uint32_t offset, const std::string& levelName, const std::string& tag);
+    void drawEditorWindow();
     
     std::vector<uint8_t> exportData;
     int currentExportIndex = -1;

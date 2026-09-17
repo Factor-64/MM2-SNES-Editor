@@ -33,7 +33,8 @@ struct MacroTile {
     TileRef right;
 };
 
-DataChanged saveMetaTileToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, uint32_t collision, MetaTile& mt);
+DataChanged saveMetaTileToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, MetaTile& mt, bool isNes);
+DataChanged saveCollisionToROM(std::vector<uint8_t>& rom, uint32_t addr, MetaTile& mt);
 std::vector<Tile> decodeTileRanges(const std::vector<Range>& ranges, const std::vector<uint8_t>& rom, const int tileSize);
 std::vector<Tile> decodeTileRange(const Range& range, const std::vector<uint8_t>& rom, const int tileSize);
 

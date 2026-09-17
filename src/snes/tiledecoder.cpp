@@ -325,7 +325,7 @@ MemoryDelta encodeMetaTile32NES(std::vector<uint8_t>& rom, uint32_t addr, const 
     return m;
 }
 
-DataChanged encodeMetaTile32SNES(std::vector<uint8_t>& rom, uint32_t addr, uint32_t collisionAddr, MetaTile& mt)
+DataChanged encodeMetaTile32SNES(std::vector<uint8_t>& rom, uint32_t addr, MetaTile& mt)
 {
     DataChanged d;
 
@@ -349,28 +349,6 @@ DataChanged encodeMetaTile32SNES(std::vector<uint8_t>& rom, uint32_t addr, uint3
     m.oldData.push_back(rom[addr + 3]);
 
     d.deltas.push_back(m);
-
-    // Collision
-    MemoryDelta m2;
-    m2.address = collisionAddr;
-
-    // TL
-    m2.newData.push_back(mt.collision[0]);
-    m2.oldData.push_back(rom[collisionAddr + 0]);
-
-    // BL
-    m2.newData.push_back(mt.collision[2]);
-    m2.oldData.push_back(rom[collisionAddr + 1]);
-
-    // TR
-    m2.newData.push_back(mt.collision[1]);
-    m2.oldData.push_back(rom[collisionAddr + 2]);
-
-    // BR
-    m2.newData.push_back(mt.collision[3]);
-    m2.oldData.push_back(rom[collisionAddr + 3]);
-
-    d.deltas.push_back(m2);
 
     return d;
 }
@@ -397,13 +375,13 @@ MemoryDelta saveMetaTilePalette(std::vector<uint8_t>& rom, uint32_t addr, const 
     return m;
 }
 
-DataChanged saveMetaTileToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, uint32_t collision, MetaTile& mt)
+DataChanged saveMetaTileToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t paladdr, MetaTile& mt, bool isNes)
 {
     DataChanged data;
     MemoryDelta m;
 
-    if (collision != 0)
-        data = encodeMetaTile32SNES(rom, addr, collision, mt);
+    if (!isNes)
+        data = encodeMetaTile32SNES(rom, addr, mt);
     else
     {
         MemoryDelta m2;
@@ -411,6 +389,32 @@ DataChanged saveMetaTileToROM(std::vector<uint8_t>& rom, uint32_t addr, uint32_t
         data.deltas.push_back(m2);
     }
     m = saveMetaTilePalette(rom, paladdr, mt);
+    data.deltas.push_back(m);
+    return data;
+}
+
+DataChanged saveCollisionToROM(std::vector<uint8_t>& rom, uint32_t addr, MetaTile& mt)
+{
+    DataChanged data;
+    MemoryDelta m;
+    m.address = addr;
+
+    // TL
+    m.newData.push_back(mt.collision[0]);
+    m.oldData.push_back(rom[addr + 0]);
+
+    // BL
+    m.newData.push_back(mt.collision[2]);
+    m.oldData.push_back(rom[addr + 1]);
+
+    // TR
+    m.newData.push_back(mt.collision[1]);
+    m.oldData.push_back(rom[addr + 2]);
+
+    // BR
+    m.newData.push_back(mt.collision[3]);
+    m.oldData.push_back(rom[addr + 3]);
+
     data.deltas.push_back(m);
     return data;
 }

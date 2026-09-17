@@ -27,7 +27,7 @@ struct BGSpeedData {
     uint8_t frame_count = 0;
 };
 
-using ScrollData = std::array<uint8_t, 512>;
+using ScrollData = std::array<uint8_t, 32>;
 
 std::vector<uint8_t> loadLevelData(const std::vector<uint8_t>& rom, uint32_t addr, int count);
 ScrollData loadScrollData(const std::vector<uint8_t>& rom, uint32_t addr);

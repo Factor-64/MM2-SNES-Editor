@@ -418,6 +418,9 @@ void App::handleShortcuts()
         case AW_Graphics:
             editor.graphicsZoom = std::clamp(editor.graphicsZoom + zoomDelta, 1, 8);
             break;
+        case AW_Level:
+            editor.levelZoom = std::clamp(editor.levelZoom + zoomDelta, 1, 8);
+            break;
         default:
             break;
         }
@@ -467,6 +470,7 @@ void App::run()
         {
             drawPaletteWindow();
             drawTilesetWindow();
+            drawEditorWindow();
             drawLevelWindow();
             if (openHeader)
                 drawHeaderWindow();
@@ -597,11 +601,10 @@ void App::saveBinaryPaletteAnimation(const LevelEntry& level, const std::string 
 
     uint8_t fc = editor.rom[level.palette_afc];
     uint8_t yy = editor.rom[level.palette_anime];
-    int numBlocks = std::popcount(yy);
 
     if (currentExportIndex == -1)
     {
-        exportData = { fc, 0 };
+        exportData = { fc };
         openExportDialog(level.palette_afc, levelName, "afc");
         currentExportIndex = -2;
         return;
@@ -609,29 +612,26 @@ void App::saveBinaryPaletteAnimation(const LevelEntry& level, const std::string 
 
     if (currentExportIndex == -2)
     {
+        if (fc == 0)
+        {
+            exportingData = false;
+            menuState = MS_NULL;
+            return;
+        }
+
         if (mode == 0)
         {
-            if (fc == 0)
-            {
-                exportingData = false;
-                menuState = MS_NULL;
-                return;
-            }
-
             uint32_t size = fc * 16;
             exportData.assign(editor.rom.begin() + level.palette_anime,
                 editor.rom.begin() + level.palette_anime + size);
 
-            openExportDialog(level.palette_anime, levelName, "anime");
+            openExportDialog(level.palette_anime, levelName, "frames");
             currentExportIndex = -3;
             return;
         }
         else
         {
-            uint32_t size = numBlocks * 2;
-            exportData.assign(editor.rom.begin() + level.palette_anime,
-                editor.rom.begin() + level.palette_anime + size);
-
+            exportData = { yy };
             openExportDialog(level.palette_anime, levelName, "anime");
             currentExportIndex = -3;
             return;
@@ -662,13 +662,9 @@ void App::saveBinaryPaletteAnimation(const LevelEntry& level, const std::string 
 
     uint32_t tableBank = level.palette_anime & 0xFF0000;
     exportData.clear();
-    exportData.reserve(numBlocks * 32);
 
-    for (int bit = 0; bit < 8; ++bit)
+    for (int bit = 0; bit < 6; ++bit)
     {
-        if (!(yy & (1 << bit)))
-            continue;
-
         uint32_t snesAddr = tableBank | (src + bit * 32);
         uint32_t pcAddr = snesToPc(snesAddr, editor.isHiROM);
 
@@ -677,8 +673,6 @@ void App::saveBinaryPaletteAnimation(const LevelEntry& level, const std::string 
     }
     uint32_t firstBlockAddr = tableBank | src;
     openExportDialog(firstBlockAddr, levelName, "frame");
-
-    ++currentExportIndex;
 }
 
 void App::saveBinary(LevelField field, int lvl, int mode)
@@ -1742,7 +1736,7 @@ void App::drawPaletteWindow()
 
     ImGui::SeparatorText(("Palettes for " + levelName).c_str());
 
-    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))\
+    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))
     {
         editor.rebuildTileset = true;
         editor.paletteIndex--;
@@ -1831,42 +1825,51 @@ inline void DrawTextOutlined(ImDrawList* dl, ImVec2 pos, ImU32 colText, const ch
 void App::drawLevelWindow()
 {
     ImGui::SetNextWindowSizeConstraints(ImVec2(320, 240), ImVec2(FLT_MAX, FLT_MAX));
-    ImGui::Begin("Editor", &open, ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::Begin("Level Editor", &open, ImGuiWindowFlags_HorizontalScrollbar);
+
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow))
+        editor.activeWindow = AW_Level;
+
+    drawLevelView();
+
+    ImGui::End();
+}
+
+void App::drawEditorWindow()
+{
+    ImGui::SetNextWindowSizeConstraints(ImVec2(320, 240), ImVec2(FLT_MAX, FLT_MAX));
+    ImGui::Begin("Tile Editor", &open, ImGuiWindowFlags_HorizontalScrollbar);
 
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow))
         editor.activeWindow = AW_Editor;
 
-    if (editor.editMode == EM_Level)
-    {
-        drawLevelView();
-        ImGui::End();
-        return;
-    }
-
     ImGui::SeparatorText("CONTROLS");
     ImGui::Text("CTRL+= and CTRL+- Zooms in and out");
-    ImGui::Text("B toggles Paint Mode");
-
-    if (editor.editMode == EM_Collision)
+    if (editor.editMode != EM_Level)
     {
-        ImGui::Text("Hold Left Click to Paint with the Selected Collision Type");
-    }
-    else
-    {
-        ImGui::Text("Hold Left Click to Paint with the Selected Tile");
-        ImGui::Text("The selected Tile uses the currently Selected Palette & Attributes");
-        ImGui::Text("Right Click grabs the currently hovered Tile");
-        ImGui::Text("Paint Mode makes Left Click only Paint with the selected Palette & Attributes");
+        ImGui::Text("B toggles Paint Mode");
 
-        ImGui::Checkbox("Paint Mode", &editor.paintMode);
-
-        if (editor.editMode == EM_Layer2 || editor.editMode == EM_Layer3)
+        if (editor.editMode == EM_Collision)
         {
-            ImGui::Checkbox("Horizontal Flip", &editor.hFlip);
-            ImGui::SameLine();
-            ImGui::Checkbox("Vertical Flip", &editor.vFlip);
-            ImGui::SameLine();
-            ImGui::Checkbox("High Priority", &editor.hPriority);
+            ImGui::Text("Hold Left Click to Paint with the Selected Collision Type");
+        }
+        else
+        {
+            ImGui::Text("Hold Left Click to Paint with the Selected Tile");
+            ImGui::Text("The selected Tile uses the currently Selected Palette & Attributes");
+            ImGui::Text("Right Click grabs the currently hovered Tile");
+            ImGui::Text("Paint Mode makes Left Click only Paint with the selected Palette & Attributes");
+
+            ImGui::Checkbox("Paint Mode", &editor.paintMode);
+
+            if (editor.editMode == EM_Layer2 || editor.editMode == EM_Layer3)
+            {
+                ImGui::Checkbox("Horizontal Flip", &editor.hFlip);
+                ImGui::SameLine();
+                ImGui::Checkbox("Vertical Flip", &editor.vFlip);
+                ImGui::SameLine();
+                ImGui::Checkbox("High Priority", &editor.hPriority);
+            }
         }
     }
 
@@ -1962,7 +1965,6 @@ inline void DrawGrid(ImDrawList* dl, const ImVec2& min, const ImVec2& max, int w
         dl->AddLine(ImVec2(minX, y), ImVec2(maxX, y), color);
 }
 
-
 inline void DrawHoverHighlight(ImDrawList* dl, const ImVec2& min, int w, int h, int x, int y)
 {
     const float x0 = min.x + float(x * w);
@@ -2031,7 +2033,6 @@ inline void DrawTilePreview(ImDrawList* dl, const ImVec2& min, int ts, int s, in
     dl->AddRect(p0, p1, IM_COL32(255, 255, 0, 255), 0.0f, 0, 2.0f);
 }
 
-
 inline void App::SelectTileFromClick(int tileX, int tileY, int atlasWidth)
 {
     editor.selectedTile = tileY * atlasWidth + tileX;
@@ -2090,8 +2091,8 @@ inline DataChanged App::PaintMetaTile(int tileX, int tileY, int atlasWidth, cons
         editor.rom,
         level.chip32x32 + trueIndex,
         level.chip32x32_palette + metaTileIndex,
-        level.collision + trueIndex,
-        meta
+        meta,
+        editor.mode == 0
     );
 
     editor.rebuildTileset = true;
@@ -3118,15 +3119,14 @@ void App::drawGraphicsWindow()
 void App::drawEditMode()
 {
     int tileSize = 8;
-    float scale = 2.0f;
     static TilemapTexture tilegrid;
 
     switch (editor.editMode)
     {
         case EM_Collision:
+        case EM_Level:
         case EM_Metatiles: {
             tileSize = 16;
-            scale = 1.0f;
             break;
         }
         default:
@@ -3154,6 +3154,7 @@ void App::drawEditMode()
             case EM_Layer3:
                 renderBGTileMapToRGBA(editor.layer3TileData, 32, editor.layer3Tiles, editor.subPalettes, bgColor, outPixels, tilegrid.width, tilegrid.height);
                 break;
+            case EM_Level:
             case EM_Collision:
             case EM_Metatiles: {
                 uint8_t offset = editor.mode == 0 ? 0 : 2;
@@ -3165,26 +3166,25 @@ void App::drawEditMode()
         uploadTilemapTextureRGBA(outPixels, tilegrid);
     }
 
-    scale *= editor.editorZoom;
+    const int trueSize = tileSize * editor.editorZoom;
 
-    const int trueSize = tileSize * scale;
+    int trueWidth = tilegrid.width * editor.editorZoom;
+    int trueHeight = tilegrid.height * editor.editorZoom;
 
-    int trueWidth = tilegrid.width * scale;
-    int trueHeight = tilegrid.height * scale;
-
-    ImGui::BeginChild("LevelRegion", ImVec2(trueWidth, trueHeight), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::BeginChild("TileRegion", ImVec2(trueWidth, trueHeight), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    editor.inLevelRegion = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
     DrawNearestImage(dl, tilegrid, ImVec2(trueWidth, trueHeight), ImVec2(0, 0), ImVec2(1, 1));
 
     bool hovering = ImGui::IsItemHovered();
     bool leftClick = ImGui::IsMouseDown(ImGuiMouseButton_Left);
 
-    ImGui::EndChild();
-
     ImVec2 min = ImGui::GetItemRectMin();
     ImVec2 max = ImGui::GetItemRectMax();
+
+    ImGui::EndChild();
+
+    if (editor.editMode == EM_Level) return;
 
     int atlasWidth = trueWidth / trueSize;
     int atlasHeight = trueHeight / trueSize;
@@ -3228,12 +3228,10 @@ void App::drawEditMode()
             {
                 int metaX = tileX / 2;
                 int metaY = tileY / 2;
-                static int metaTileIndex = -1;
                 int metaIndex = metaY * (atlasWidth / 2) + metaX;
 
-                if (metaIndex >= 0 && metaIndex < editor.levelMetaTiles.size() && metaIndex != metaTileIndex)
+                if (metaIndex >= 0 && metaIndex < editor.levelMetaTiles.size())
                 {
-                    metaTileIndex = metaIndex;
                     int localX = tileX % 2;
                     int localY = tileY % 2;
                     int localIndex = localY * 2 + localX;
@@ -3245,13 +3243,18 @@ void App::drawEditMode()
                     const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
 
                     int trueIndex = metaIndex * 4;
-                    DataChanged d = saveMetaTileToROM(editor.rom, level.chip32x32 + trueIndex, level.chip32x32_palette + metaIndex, level.collision + trueIndex, editor.levelMetaTiles[metaIndex]);
+                    DataChanged d;
+                    bool isNes = editor.mode == 0;
+                    if(!isNes)
+                        d = saveCollisionToROM(editor.rom, level.collision + trueIndex, editor.levelMetaTiles[metaIndex]);
+                    else
+                        d = saveMetaTileToROM(editor.rom, level.chip32x32 + trueIndex, level.chip32x32_palette + metaIndex, editor.levelMetaTiles[metaIndex], isNes);
                     data.deltas.insert(data.deltas.end(), d.deltas.begin(), d.deltas.end());
                 }
             }
         }
     }
-    else if (editor.inLevelRegion && hovering)
+    else if (hovering)
     {
         if (editor.selectedTile >= 0)
         {
@@ -3503,24 +3506,27 @@ void App::drawLevelView()
 
     switch (editor.lvlViewMode)
     {
-        case LVM_Level:
+    case LVM_Level:
+        if (editor.editMode == EM_Level)
+        {
             ImGui::Text("Hold Left Click to Paint with the Selected Meta Tile");
             ImGui::Text("Right Click to grab the currently hovered Meta Tile");
-            maxScreens -= 2;
-            break;
-        case LVM_Objects:
-            ImGui::Text("Left Click to Selected an Object");
-            ImGui::Text("Hold Left Click to Drag an Object");
-            ImGui::Text("Left Click an Object in the List to jump to it");
-            ImGui::Text("Right Click an Object in the List for context menu");
-            ImGui::Text("WARNING: Insert Above/Below shifts all objects up/down so the first/last Object will be overwritten");
-            maxScreens -= 2;
-            break;
-        case LVM_Checkpoints:
-            maxScreens -= 1;
-            break;
-        default:
-            break;
+        }
+        maxScreens -= 2;
+        break;
+    case LVM_Objects:
+        ImGui::Text("Left Click to Selected an Object");
+        ImGui::Text("Hold Left Click to Drag an Object");
+        ImGui::Text("Left Click an Object in the List to jump to it");
+        ImGui::Text("Right Click an Object in the List for context menu");
+        ImGui::Text("WARNING: Insert Above/Below shifts all objects up/down so the first/last Object will be overwritten");
+        maxScreens -= 2;
+        break;
+    case LVM_Checkpoints:
+        maxScreens -= 1;
+        break;
+    default:
+        break;
     }
     ImGui::Separator();
 
@@ -3677,8 +3683,6 @@ void App::drawLevelView()
             }
             uploadTilemapTextureRGBA(outPixels, layer3);
         }
-
-        drawScrollData();
     }
 
     int trueWidth = tileGrid.width * editor.editorZoom;
@@ -3686,7 +3690,7 @@ void App::drawLevelView()
 
     ImGui::BeginChild("LevelRegion", ImVec2(trueWidth, trueHeight), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    editor.inLevelRegion = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+    bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
     DrawNearestImage(dl, tileGrid, ImVec2(trueWidth, trueHeight), ImVec2(0, 0), ImVec2(1, 1));
 
@@ -3702,10 +3706,11 @@ void App::drawLevelView()
 
     if (editor.lvlViewMode == LVM_Level)
     {
-        static DataChanged data;
         DrawGrid(dl, min, max, ts, ts);
+        if (editor.editMode != EM_Level) return;
+        static DataChanged data;
 
-        if (editor.inLevelRegion)
+        if (hovered )
         {
             int tileX = -1, tileY = -1;
             GetTileUnderMouse(min, ts, ts, tileX, tileY);
@@ -3728,7 +3733,7 @@ void App::drawLevelView()
                         int index = worldTileY * fullMetaWidth + worldTileX;
                         static int oldIndex = -1;
 
-                        if (index >= 0 && index < editor.levelData.size() && editor.inLevelRegion && index != oldIndex)
+                        if (index >= 0 && index < editor.levelData.size() && index != oldIndex)
                         {
                             oldIndex = index;
                             editor.levelData[index] = editor.selectedTile;
@@ -3747,7 +3752,7 @@ void App::drawLevelView()
                 {
                     DrawHoverHighlight(dl, min, ts, ts, tileX, tileY);
                 }
-                if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && editor.inLevelRegion)
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && hovered)
                 {
                     int worldTileX = tileX + windowX;
                     int worldTileY = tileY;
@@ -3801,6 +3806,7 @@ void App::drawLevelView()
                 saveROMData(mem);
             }
 
+            drawScrollData();
             drawBGScrollData();
 
             ImGui::Checkbox("Preview Scroll", &editor.previewScroll);
@@ -4540,12 +4546,14 @@ void App::drawBGScrollData()
     constexpr std::array<uint8_t, 3> layer3Items[] = { 0x30, 0x31, 0x32 };
 
     static const std::map<uint8_t, std::string> layer2Map = {
+        { 0x0 , "N/A" },
         { 0x28, "32x32 Single Screen Scroll" },
         { 0x29, "64x32 Horizontal Scroll" },
         { 0x2A, "32x64 Vertical Scroll" }
     };
 
     static const std::map<uint8_t, std::string> layer3Map = {
+        { 0x0 , "N/A" },
         { 0x30, "32x32 Single Screen Scroll" },
         { 0x31, "64x32 Horizontal Scroll" },
         { 0x32, "32x64 Vertical Scroll" }
