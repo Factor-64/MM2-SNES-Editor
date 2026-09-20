@@ -307,7 +307,7 @@ DataChanged writeAnimatedColor(std::vector<uint8_t>& rom, uint32_t pal_addr, boo
     uint32_t ptr = pal_addr + 1;
     uint32_t tableBank = pal_addr & 0xFF0000;
 
-    ptr += frameIndex * 2;
+    ptr += (frameIndex / 6) * 2;
 
     uint16_t src = rom[ptr] | (rom[ptr + 1] << 8);
     if (src == 0xFFFF)
@@ -349,9 +349,10 @@ DataChanged writeAnimatedPalette(std::vector<uint8_t>& rom, uint32_t pal_addr, b
     uint32_t ptr = pal_addr + 1;
     uint32_t tableBank = pal_addr & 0xFF0000;
 
-    ptr += frameIndex * 2;
+    ptr += (frameIndex / 6) * 2;
 
     uint16_t src = rom[ptr] | (rom[ptr + 1] << 8);
+    std::println("{} {} {}", src, ptr, pal_addr);
     if (src == 0xFFFF)
         return data;
 

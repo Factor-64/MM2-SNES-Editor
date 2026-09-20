@@ -33,7 +33,6 @@ private:
 
     enum ViewMode : int {
         VM_Tileset = 0,
-        VM_Metatiles,
         VM_Collision,
         VM_Layer2,
         VM_Layer3,
@@ -41,7 +40,6 @@ private:
 
     enum EditMode : int {
         EM_Metatiles = 0,
-        EM_Level,
         EM_Collision,
         EM_Layer2,
         EM_Layer3
@@ -59,7 +57,8 @@ private:
         AW_Tileset,
         AW_Editor,
         AW_Graphics,
-        AW_Level
+        AW_Level,
+        AW_MetaTile
     };
 
     enum PaletteType : int {
@@ -105,6 +104,7 @@ private:
         bool rebuildView = true;
         bool rebuildEdit = true;
         bool rebuildData = true;
+        bool rebuildMetaTileset = true;
         bool rebuildGraphics = true;
         bool universalBGColor = false;
         bool animatePalettes = false;
@@ -124,6 +124,7 @@ private:
         int editorZoom = 1;
         int graphicsZoom = 2;
         int levelZoom = 1;
+        int metatilesetZoom = 1;
 
         int layer2Scanlines = 0;
         int layer3Scanlines = 0;
@@ -162,6 +163,7 @@ private:
         Checkpoints checkpointData;
 
         TilemapTexture tileset;
+        TilemapTexture metatileset;
 
         int selectedLevel = 0;
         ViewMode tileViewMode = VM_Tileset;
@@ -211,7 +213,6 @@ private:
     void drawBGScrollData();
     void drawLevelView();
     void drawTileView();
-    void SelectTileFromClick(int tileX, int tileY, int atlasWidth);
     DataChanged PaintMetaTile(int tileX, int tileY, int atlasWidth, const bool color);
     void DrawColorButton(const std::string& id, ColorRGBA& col, const PaletteType type, size_t paletteIndex, int colorIndex, const char* popupName, const LevelEntry& level, ImVec2 size = ImVec2(0, 0));
     void DrawPaletteRow(const char* label, size_t index, Palette& pal, int colorsPerPalette, const PaletteType type, const char* popupName, const char* ident, const LevelEntry& level);
@@ -244,6 +245,8 @@ private:
     void saveBinaryPaletteAnimation(const LevelEntry& level, const std::string levelName, int mode);
     void openExportDialog(uint32_t offset, const std::string& levelName, const std::string& tag);
     void drawEditorWindow();
+    void drawMetaTileView();
+    void drawMetaTileWindow();
     
     std::vector<uint8_t> exportData;
     int currentExportIndex = -1;

@@ -421,6 +421,9 @@ void App::handleShortcuts()
         case AW_Level:
             editor.levelZoom = std::clamp(editor.levelZoom + zoomDelta, 1, 8);
             break;
+        case AW_MetaTile:
+            editor.metatilesetZoom = std::clamp(editor.metatilesetZoom + zoomDelta, 1, 8);
+            break;
         default:
             break;
         }
@@ -472,6 +475,7 @@ void App::run()
             drawTilesetWindow();
             drawEditorWindow();
             drawLevelWindow();
+            drawMetaTileWindow();
             if (openHeader)
                 drawHeaderWindow();
             if (openGraphics)
@@ -807,7 +811,8 @@ void App::drawTilesetWindow()
             {
                 editor.mode = i;
                 editor.rebuildData = true;
-
+                editor.aniPalIndex = 0;
+                editor.subPaletteIndex = 0;
                 if (editor.mode == 0 &&
                     (editor.tileViewMode == VM_Layer2 || editor.tileViewMode == VM_Layer3))
                 {
@@ -827,6 +832,8 @@ void App::drawTilesetWindow()
             bool selected = (i == editor.selectedLevel);
             if (ImGui::Selectable(names[i].c_str(), selected))
             {
+                editor.selectedMetaTile = -1;
+                editor.selectedTile = -1;
                 editor.selectedLevel = i;
                 editor.rebuildData = true;
             }
@@ -869,6 +876,7 @@ void App::drawTilesetWindow()
         editor.rebuildEdit = true;
         editor.rebuildBackgrounds = true;
         editor.rebuildGraphics = true;
+        editor.rebuildMetaTileset = true;
 
         editor.levelTiles = decodeTileRanges(levelGfx.layer12, editor.rom, 32);
         editor.levelTileMap = makeTileMap(editor.levelTiles, 16, 1);
@@ -955,17 +963,15 @@ void App::drawTilesetWindow()
         editor.screenCount = editor.levelData.size() / 64;
 
         editor.aniPalettes = editor.palettes;
-        editor.paletteIndex = (editor.mode == 0 ? 0 : 2);
-        editor.aniPalIndex = 0;
 
         editor.subPalettes = editor.palettes;
-        editor.subPaletteIndex = 0;
+
+        applyAnimationFrame();
     }
 
     static std::string label = "Tileset for " + levelName;
     const char* tabNames[] = {
-        "Tile Editor",
-        "Level Editor",
+        "MetaTile Editor",
         "Collision Editor",
         "Background Layer 2 Editor",
         "Background Layer 3 Editor"
@@ -973,7 +979,7 @@ void App::drawTilesetWindow()
 
     if (ImGui::BeginCombo("Editor Mode", tabNames[editor.tileViewMode]))
     {
-        int tabCount = (editor.mode == 0 ? 3 : 5);
+        int tabCount = (editor.mode == 0 ? 2 : 4);
 
         for (int i = 0; i < tabCount; ++i)
         {
@@ -989,10 +995,6 @@ void App::drawTilesetWindow()
                     label = "Tileset for " + levelName;
                     editor.editMode = EM_Metatiles;
                     break;
-                case VM_Metatiles:
-                    label = "Meta Tiles for " + levelName;
-                    editor.editMode = EM_Level;
-                    break;
                 case VM_Collision:
                     editor.editMode = EM_Collision;
                     break;
@@ -1006,9 +1008,7 @@ void App::drawTilesetWindow()
                     break;
                 }
 
-                editor.rebuildBackgrounds = true;
                 editor.rebuildEdit = true;
-                editor.rebuildView = true;
                 editor.rebuildTileset = true;
             }
         }
@@ -1070,7 +1070,7 @@ void App::updatePaletteAnimation()
 
     editor.animTimer = anim.frame_timer;
 
-    editor.animFrame++;
+    ++editor.animFrame;
     if (editor.animFrame >= anim.frame_count)
         editor.animFrame = 0;
 
@@ -1080,6 +1080,7 @@ void App::updatePaletteAnimation()
     editor.rebuildBackgrounds = true;
     editor.rebuildEdit = true;
     editor.rebuildView = true;
+    editor.rebuildMetaTileset = true;
 }
 
 void App::DrawColorButton(const std::string& id,
@@ -1380,6 +1381,7 @@ void App::DrawAnimatedPalettes(int colorsPerPalette,
         editor.rebuildBackgrounds = true;
         editor.rebuildEdit = true;
         editor.rebuildView = true;
+        editor.rebuildMetaTileset = true;
     }
 
     const size_t start = editor.aniPalIndex * colorsPerFrame;
@@ -1520,6 +1522,7 @@ void App::writeNESColorToROM(const LevelEntry& level, int index)
     editor.rebuildBackgrounds = true;
     editor.rebuildEdit = true;
     editor.rebuildView = true;
+    editor.rebuildMetaTileset = true;
 }
 
 void App::writeSNESColorToROM(const LevelEntry& level)
@@ -1594,6 +1597,7 @@ void App::writeSNESColorToROM(const LevelEntry& level)
     editor.rebuildBackgrounds = true;
     editor.rebuildEdit = true;
     editor.rebuildView = true;
+    editor.rebuildMetaTileset = true;
 }
 
 void App::writeNESPaletteToROM(size_t paletteIndex,
@@ -1624,6 +1628,7 @@ void App::writeNESPaletteToROM(size_t paletteIndex,
     editor.rebuildBackgrounds = true;
     editor.rebuildEdit = true;
     editor.rebuildView = true;
+    editor.rebuildMetaTileset = true;
 }
 
 void App::writeSNESPaletteToROM(size_t paletteIndex,
@@ -1688,6 +1693,7 @@ void App::writeSNESPaletteToROM(size_t paletteIndex,
     editor.rebuildBackgrounds = true;
     editor.rebuildEdit = true;
     editor.rebuildView = true;
+    editor.rebuildMetaTileset = true;
 }
 
 void App::drawPaletteWindow()
@@ -1786,6 +1792,7 @@ void App::drawPaletteWindow()
         editor.rebuildBackgrounds = true;
         editor.rebuildEdit = true;
         editor.rebuildView = true;
+        editor.rebuildMetaTileset = true;
     }
 
     const char* popup = isNES ? "Pick NES Color" : "Edit SNES Color";
@@ -1835,6 +1842,19 @@ void App::drawLevelWindow()
     ImGui::End();
 }
 
+void App::drawMetaTileWindow()
+{
+    ImGui::SetNextWindowSizeConstraints(ImVec2(320, 240), ImVec2(FLT_MAX, FLT_MAX));
+    ImGui::Begin("MetaTileset", &open, ImGuiWindowFlags_HorizontalScrollbar);
+
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootWindow))
+        editor.activeWindow = AW_MetaTile;
+
+    drawMetaTileView();
+
+    ImGui::End();
+}
+
 void App::drawEditorWindow()
 {
     ImGui::SetNextWindowSizeConstraints(ImVec2(320, 240), ImVec2(FLT_MAX, FLT_MAX));
@@ -1845,31 +1865,28 @@ void App::drawEditorWindow()
 
     ImGui::SeparatorText("CONTROLS");
     ImGui::Text("CTRL+= and CTRL+- Zooms in and out");
-    if (editor.editMode != EM_Level)
+    ImGui::Text("B toggles Paint Mode");
+
+    if (editor.editMode == EM_Collision)
     {
-        ImGui::Text("B toggles Paint Mode");
+        ImGui::Text("Hold Left Click to Paint with the Selected Collision Type");
+    }
+    else
+    {
+        ImGui::Text("Hold Left Click to Paint with the Selected Tile");
+        ImGui::Text("The selected Tile uses the currently Selected Palette & Attributes");
+        ImGui::Text("Right Click grabs the currently hovered Tile");
+        ImGui::Text("Paint Mode makes Left Click only Paint with the selected Palette & Attributes");
 
-        if (editor.editMode == EM_Collision)
+        ImGui::Checkbox("Paint Mode", &editor.paintMode);
+
+        if (editor.editMode == EM_Layer2 || editor.editMode == EM_Layer3)
         {
-            ImGui::Text("Hold Left Click to Paint with the Selected Collision Type");
-        }
-        else
-        {
-            ImGui::Text("Hold Left Click to Paint with the Selected Tile");
-            ImGui::Text("The selected Tile uses the currently Selected Palette & Attributes");
-            ImGui::Text("Right Click grabs the currently hovered Tile");
-            ImGui::Text("Paint Mode makes Left Click only Paint with the selected Palette & Attributes");
-
-            ImGui::Checkbox("Paint Mode", &editor.paintMode);
-
-            if (editor.editMode == EM_Layer2 || editor.editMode == EM_Layer3)
-            {
-                ImGui::Checkbox("Horizontal Flip", &editor.hFlip);
-                ImGui::SameLine();
-                ImGui::Checkbox("Vertical Flip", &editor.vFlip);
-                ImGui::SameLine();
-                ImGui::Checkbox("High Priority", &editor.hPriority);
-            }
+            ImGui::Checkbox("Horizontal Flip", &editor.hFlip);
+            ImGui::SameLine();
+            ImGui::Checkbox("Vertical Flip", &editor.vFlip);
+            ImGui::SameLine();
+            ImGui::Checkbox("High Priority", &editor.hPriority);
         }
     }
 
@@ -2033,9 +2050,9 @@ inline void DrawTilePreview(ImDrawList* dl, const ImVec2& min, int ts, int s, in
     dl->AddRect(p0, p1, IM_COL32(255, 255, 0, 255), 0.0f, 0, 2.0f);
 }
 
-inline void App::SelectTileFromClick(int tileX, int tileY, int atlasWidth)
+inline void SelectTileFromClick(int& index, int tileX, int tileY, int atlasWidth)
 {
-    editor.selectedTile = tileY * atlasWidth + tileX;
+    index = tileY * atlasWidth + tileX;
 }
 
 inline DataChanged App::PaintMetaTile(int tileX, int tileY, int atlasWidth, const bool color)
@@ -2097,6 +2114,8 @@ inline DataChanged App::PaintMetaTile(int tileX, int tileY, int atlasWidth, cons
 
     editor.rebuildTileset = true;
     editor.rebuildEdit = true;
+    editor.rebuildView = true;
+    editor.rebuildMetaTileset = true;
 
     return d;
 }
@@ -3120,16 +3139,19 @@ void App::drawEditMode()
 {
     int tileSize = 8;
     static TilemapTexture tilegrid;
+    TilemapTexture* t;
 
     switch (editor.editMode)
     {
         case EM_Collision:
-        case EM_Level:
         case EM_Metatiles: {
             tileSize = 16;
+            t = &editor.metatileset;
+            editor.rebuildEdit = false;
             break;
         }
         default:
+            t = &tilegrid;
             break;
     }
 
@@ -3154,27 +3176,19 @@ void App::drawEditMode()
             case EM_Layer3:
                 renderBGTileMapToRGBA(editor.layer3TileData, 32, editor.layer3Tiles, editor.subPalettes, bgColor, outPixels, tilegrid.width, tilegrid.height);
                 break;
-            case EM_Level:
-            case EM_Collision:
-            case EM_Metatiles: {
-                uint8_t offset = editor.mode == 0 ? 0 : 2;
-                renderMetaTileMapToRGBA(editor.levelMetaTiles, editor.levelMacroTiles, 16, editor.levelTiles, editor.aniPalettes, offset, bgColor, outPixels, tilegrid.width, tilegrid.height);
-                break;
-            }
         }
-
         uploadTilemapTextureRGBA(outPixels, tilegrid);
     }
 
     const int trueSize = tileSize * editor.editorZoom;
 
-    int trueWidth = tilegrid.width * editor.editorZoom;
-    int trueHeight = tilegrid.height * editor.editorZoom;
+    int trueWidth = t->width * editor.editorZoom;
+    int trueHeight = t->height * editor.editorZoom;
 
     ImGui::BeginChild("TileRegion", ImVec2(trueWidth, trueHeight), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
-    DrawNearestImage(dl, tilegrid, ImVec2(trueWidth, trueHeight), ImVec2(0, 0), ImVec2(1, 1));
+    DrawNearestImage(dl, *t, ImVec2(trueWidth, trueHeight), ImVec2(0, 0), ImVec2(1, 1));
 
     bool hovering = ImGui::IsItemHovered();
     bool leftClick = ImGui::IsMouseDown(ImGuiMouseButton_Left);
@@ -3183,8 +3197,6 @@ void App::drawEditMode()
     ImVec2 max = ImGui::GetItemRectMax();
 
     ImGui::EndChild();
-
-    if (editor.editMode == EM_Level) return;
 
     int atlasWidth = trueWidth / trueSize;
     int atlasHeight = trueHeight / trueSize;
@@ -3235,21 +3247,27 @@ void App::drawEditMode()
                     int localX = tileX % 2;
                     int localY = tileY % 2;
                     int localIndex = localY * 2 + localX;
+                    static int oldLocal = -1;
+                    static int oldMeta = -1;
+                    if (oldLocal != localIndex || oldMeta != metaIndex)
+                    {
+                        oldLocal = localIndex;
+                        oldMeta = metaIndex;
+                        editor.levelMetaTiles[metaIndex].collision[localIndex] = editor.selectedTile;
 
-                    editor.levelMetaTiles[metaIndex].collision[localIndex] = editor.selectedTile;
+                        auto& names = editor.data[editor.mode].levelNames;
+                        const std::string& levelName = names[editor.selectedLevel];
+                        const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
 
-                    auto& names = editor.data[editor.mode].levelNames;
-                    const std::string& levelName = names[editor.selectedLevel];
-                    const LevelEntry& level = editor.data[editor.mode].levels.at(levelName);
-
-                    int trueIndex = metaIndex * 4;
-                    DataChanged d;
-                    bool isNes = editor.mode == 0;
-                    if(!isNes)
-                        d = saveCollisionToROM(editor.rom, level.collision + trueIndex, editor.levelMetaTiles[metaIndex]);
-                    else
-                        d = saveMetaTileToROM(editor.rom, level.chip32x32 + trueIndex, level.chip32x32_palette + metaIndex, editor.levelMetaTiles[metaIndex], isNes);
-                    data.deltas.insert(data.deltas.end(), d.deltas.begin(), d.deltas.end());
+                        int trueIndex = metaIndex * 4;
+                        DataChanged d;
+                        bool isNes = editor.mode == 0;
+                        if (!isNes)
+                            d = saveCollisionToROM(editor.rom, level.collision + trueIndex, editor.levelMetaTiles[metaIndex]);
+                        else
+                            d = saveMetaTileToROM(editor.rom, level.chip32x32 + trueIndex, level.chip32x32_palette + metaIndex, editor.levelMetaTiles[metaIndex], isNes);
+                        data.deltas.insert(data.deltas.end(), d.deltas.begin(), d.deltas.end());
+                    }
                 }
             }
         }
@@ -3327,15 +3345,108 @@ void App::drawEditMode()
         saveROMData(data);
         data.deltas.clear();
     }
-    DrawGrid(dl, min, max, trueSize, trueSize);
 
     if (editor.editMode == EM_Metatiles)
     {
         const int s = 32;
         const int ts = s * editor.editorZoom;
-        ImU32 color = IM_COL32(160, 0, 160, 128);
-        DrawGrid(dl, min, max, ts, color);
+        ImU32 color = IM_COL32(160, 0, 160, 127);
+        ImU32 color2 = IM_COL32(255, 0, 255, 255);
+        DrawGrid(dl, min, max, ts, ts, color);
+        const int x = editor.selectedMetaTile & 15;
+        const int y = editor.selectedMetaTile / 16;
+        DrawSelectedOutline(dl, min, ts, ts, x, y, color2, color2, false);
     }
+
+    DrawGrid(dl, min, max, trueSize, trueSize);
+}
+
+void App::drawMetaTileView()
+{
+    ImGui::SeparatorText("CONTROLS");
+    ImGui::Text("CTRL+= and CTRL+- Zooms in and out");
+    ImGui::Text("Left Click to select a MetaTile");
+    
+    const auto& names = editor.data[editor.mode].levelNames;
+    const std::string& levelName = names[editor.selectedLevel];
+    std::string label = "MetaTileset for " + levelName;
+
+    ImGui::SeparatorText(label.c_str());
+
+    ImGui::Text("Selected Tile: %d", editor.selectedMetaTile);
+
+    static int useCount = 0;
+
+    ImGui::Text("Amount used in Level: %d", useCount);
+
+    int tileSize = 32;
+    float scale = 1.0f;
+    if (editor.rebuildMetaTileset || editor.metatileset.tex == 0)
+    {
+        editor.rebuildMetaTileset = false;
+
+        if (editor.metatileset.tex != 0)
+            glDeleteTextures(1, &editor.metatileset.tex);
+
+        std::vector<ColorRGBA> outPixels;
+
+        ColorRGBA bgColor = editor.palettes[0][0];
+        if (!editor.universalBGColor)
+            bgColor.a = 0;
+
+        uint8_t offset = editor.mode == 0 ? 0 : 2;
+        renderMetaTileMapToRGBA(editor.levelMetaTiles, editor.levelMacroTiles, 16, editor.levelTiles, editor.aniPalettes, offset, bgColor, outPixels, editor.metatileset.width, editor.metatileset.height);
+        uploadTilemapTextureRGBA(outPixels, editor.metatileset);
+    }
+
+    scale *= editor.metatilesetZoom;
+
+    int trueSize = tileSize * scale;
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    int trueWidth = editor.metatileset.width * scale;
+    int trueHeight = editor.metatileset.height * scale;
+
+    DrawNearestImage(dl, editor.metatileset, ImVec2(trueWidth, trueHeight), ImVec2(0, 0), ImVec2(1, 1));
+
+    ImVec2 min = ImGui::GetItemRectMin();
+    ImVec2 max = ImGui::GetItemRectMax();
+
+    int atlasWidth = trueWidth / trueSize;
+    int atlasHeight = trueHeight / trueSize;
+
+    bool hovering = ImGui::IsItemHovered();
+
+    if (hovering)
+    {
+        int tileX = -1, tileY = -1;
+        GetTileUnderMouse(min, trueSize, trueSize, tileX, tileY);
+        DrawHoverHighlight(dl, min, trueSize, trueSize, tileX, tileY);
+        if (ImGui::IsItemClicked())
+            SelectTileFromClick(editor.selectedMetaTile, tileX, tileY, atlasWidth);
+    }
+
+    if (editor.selectedMetaTile >= 0)
+    {
+        int selX = editor.selectedMetaTile % atlasWidth;
+        int selY = editor.selectedMetaTile / atlasWidth;
+        DrawSelectedOutline(dl, min, trueSize, trueSize, selX, selY);
+    }
+
+    static int oldMeta = -1;
+    if (editor.selectedMetaTile != oldMeta)
+    {
+        oldMeta = editor.selectedMetaTile;
+        useCount = 0;
+        for (uint8_t& d : editor.levelData)
+        {
+            if (d == editor.selectedMetaTile)
+                ++useCount;
+        }
+    }
+
+    DrawGrid(dl, min, max, trueSize, trueSize);
 }
 
 void App::drawTileView()
@@ -3349,11 +3460,6 @@ void App::drawTileView()
             tileSize = 16;
             scale = 2.0f;
             break;
-        case VM_Metatiles: {
-            tileSize = 32;
-            scale = 1.0f;
-            break;
-        }
         default:
             break;
     }
@@ -3374,27 +3480,14 @@ void App::drawTileView()
         switch (editor.tileViewMode)
         {
             case VM_Layer2:
-                tileSize = 8;
-                scale = 2.0f;
                 renderTileMapToRGBA(editor.layer2TileMap, editor.levelTiles, editor.aniPalettes[editor.paletteIndex], bgColor, outPixels, editor.tileset.width, editor.tileset.height);
                 break;
             case VM_Layer3:
-                tileSize = 8;
-                scale = 2.0f;
                 renderTileMapToRGBA(editor.layer3TileMap, editor.layer3Tiles, editor.subPalettes[editor.subPaletteIndex], bgColor, outPixels, editor.tileset.width, editor.tileset.height);
                 break;
             case VM_Tileset:
-                tileSize = 16;
-                scale = 2.0f;
                 renderTileMapToRGBA(editor.levelTileMap, editor.levelTiles, editor.aniPalettes[editor.paletteIndex], bgColor, outPixels, editor.tileset.width, editor.tileset.height);
                 break;
-            case VM_Metatiles: {
-                tileSize = 32;
-                scale = 1.0f;
-                uint8_t offset = editor.mode == 0 ? 0 : 2;
-                renderMetaTileMapToRGBA(editor.levelMetaTiles, editor.levelMacroTiles, 16, editor.levelTiles, editor.aniPalettes, offset, bgColor, outPixels, editor.tileset.width, editor.tileset.height);
-                break;
-            }
         }
         uploadTilemapTextureRGBA(outPixels, editor.tileset);
     }
@@ -3424,7 +3517,7 @@ void App::drawTileView()
         GetTileUnderMouse(min, trueSize, trueSize, tileX, tileY);
         DrawHoverHighlight(dl, min, trueSize, trueSize, tileX, tileY);
         if (ImGui::IsItemClicked())
-            SelectTileFromClick(tileX, tileY, atlasWidth);
+            SelectTileFromClick(editor.selectedTile, tileX, tileY, atlasWidth);
     }
 
     if (editor.selectedTile >= 0)
@@ -3507,11 +3600,8 @@ void App::drawLevelView()
     switch (editor.lvlViewMode)
     {
     case LVM_Level:
-        if (editor.editMode == EM_Level)
-        {
-            ImGui::Text("Hold Left Click to Paint with the Selected Meta Tile");
-            ImGui::Text("Right Click to grab the currently hovered Meta Tile");
-        }
+        ImGui::Text("Hold Left Click to Paint with the Selected Meta Tile");
+        ImGui::Text("Right Click to grab the currently hovered Meta Tile");
         maxScreens -= 2;
         break;
     case LVM_Objects:
@@ -3685,8 +3775,8 @@ void App::drawLevelView()
         }
     }
 
-    int trueWidth = tileGrid.width * editor.editorZoom;
-    int trueHeight = tileGrid.height * editor.editorZoom;
+    int trueWidth = tileGrid.width * editor.levelZoom;
+    int trueHeight = tileGrid.height * editor.levelZoom;
 
     ImGui::BeginChild("LevelRegion", ImVec2(trueWidth, trueHeight), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -3700,14 +3790,13 @@ void App::drawLevelView()
     bool hovering = ImGui::IsItemHovered();
     bool leftClick = ImGui::IsMouseDown(ImGuiMouseButton_Left);
     const int s = 32;
-    const int ts = s * editor.editorZoom;
+    const int ts = s * editor.levelZoom;
 
     ImGui::EndChild();
 
     if (editor.lvlViewMode == LVM_Level)
     {
         DrawGrid(dl, min, max, ts, ts);
-        if (editor.editMode != EM_Level) return;
         static DataChanged data;
 
         if (hovered )
@@ -3717,13 +3806,13 @@ void App::drawLevelView()
             
             if (hovering)
             {
-                if (editor.selectedTile >= 0)
+                if (editor.selectedMetaTile >= 0)
                 {
-                    int atlasW = editor.tileset.width / s;
-                    int atlasX = editor.selectedTile % atlasW;
-                    int atlasY = editor.selectedTile / atlasW;
+                    int atlasW = editor.metatileset.width / s;
+                    int atlasX = editor.selectedMetaTile % atlasW;
+                    int atlasY = editor.selectedMetaTile / atlasW;
 
-                    DrawTilePreview(dl, min, ts, s, tileX, tileY, atlasX, atlasY, editor.tileset);
+                    DrawTilePreview(dl, min, ts, s, tileX, tileY, atlasX, atlasY, editor.metatileset);
                     
                     if (leftClick)
                     {
@@ -3732,16 +3821,18 @@ void App::drawLevelView()
 
                         int index = worldTileY * fullMetaWidth + worldTileX;
                         static int oldIndex = -1;
+                        static int oldTile = -1;
 
-                        if (index >= 0 && index < editor.levelData.size() && index != oldIndex)
+                        if (index >= 0 && index < editor.levelData.size() && (index != oldIndex || oldTile != editor.selectedMetaTile))
                         {
+                            oldTile = editor.selectedMetaTile;
                             oldIndex = index;
-                            editor.levelData[index] = editor.selectedTile;
+                            editor.levelData[index] = editor.selectedMetaTile;
                             int screenIndex = worldTileX / 8;
                             int col = worldTileX % 8;
                             int row = worldTileY;
 
-                            MemoryDelta m = saveLevelData(editor.rom, level.map, screenIndex, row, col, editor.selectedTile);
+                            MemoryDelta m = saveLevelData(editor.rom, level.map, screenIndex, row, col, editor.selectedMetaTile);
                             data.deltas.push_back(m);
                             editor.rebuildView = true;
                         }
@@ -3761,7 +3852,7 @@ void App::drawLevelView()
 
                     if (index >= 0 && index < editor.levelData.size())
                     {
-                        editor.selectedTile = editor.levelData[index];
+                        editor.selectedMetaTile = editor.levelData[index];
                     }
                 }
             }
@@ -3811,8 +3902,8 @@ void App::drawLevelView()
 
             ImGui::Checkbox("Preview Scroll", &editor.previewScroll);
 
-            trueWidth = layer2.width * editor.editorZoom;
-            trueHeight = layer2.height * editor.editorZoom;
+            trueWidth = layer2.width * editor.levelZoom;
+            trueHeight = layer2.height * editor.levelZoom;
 
             if (editor.previewScroll)
             {
@@ -3824,8 +3915,8 @@ void App::drawLevelView()
                 {
                     DrawVerticalWrappingImage(dl, layer2, trueWidth, trueHeight, editor.layer2Scanlines, editor.editorZoom);
                 }
-                trueWidth = layer3.width * editor.editorZoom;
-                trueHeight = layer3.height * editor.editorZoom;
+                trueWidth = layer3.width * editor.levelZoom;
+                trueHeight = layer3.height * editor.levelZoom;
                 if (!editor.scrollLayer3Vertical)
                 {
                     DrawHorizontalWrappingImage(dl, layer3, trueWidth, trueHeight, editor.layer3Scanlines, editor.editorZoom);
@@ -3842,8 +3933,8 @@ void App::drawLevelView()
                     ImVec2(0, 0),
                     ImVec2(1, 1)
                 );
-                trueWidth = layer3.width * editor.editorZoom;
-                trueHeight = layer3.height * editor.editorZoom;
+                trueWidth = layer3.width * editor.levelZoom;
+                trueHeight = layer3.height * editor.levelZoom;
                 DrawNearestImage(dl, layer3,
                     ImVec2(trueWidth, trueHeight),
                     ImVec2(0, 0),
@@ -3981,11 +4072,11 @@ void App::drawLevelView()
 
                 if (!onScreen || !valid) continue;
 
-                float px = min.x + ((obj.screen - screenA) * 256 + obj.x) * editor.editorZoom;
-                float py = min.y + (obj.y * editor.editorZoom);
+                float px = min.x + ((obj.screen - screenA) * 256 + obj.x) * editor.levelZoom;
+                float py = min.y + (obj.y * editor.levelZoom);
 
                 const int baseSize = 8;
-                const int size = baseSize * editor.editorZoom;
+                const int size = baseSize * editor.levelZoom;
 
                 ImVec2 p0(px, py);
                 ImVec2 p1(px + size, py + size);
@@ -4020,12 +4111,12 @@ void App::drawLevelView()
                     ? IM_COL32(255, 255, 0, 255)
                     : (type == 0 ? IM_COL32(255, 0, 0, 255) : IM_COL32(0, 0, 255, 255));
 
-                float outline = 2.0f * editor.editorZoom;
+                float outline = 2.0f * editor.levelZoom;
                 dl->AddRect(p0, p1, col, 0.0f, 0, outline);
 
                 char buf[8];
                 snprintf(buf, sizeof(buf), "%02d", obj.type);
-                DrawTextOutlined(dl, ImVec2(px, py), IM_COL32(0, 0, 0, 255), buf, editor.editorZoom);
+                DrawTextOutlined(dl, ImVec2(px, py), IM_COL32(0, 0, 0, 255), buf, editor.levelZoom);
 
                 if (objDataChanged)
                 {
@@ -4254,9 +4345,9 @@ void App::drawLevelView()
                     ImGui::EndDisabled();
 
                 float centerX = (min.x + max.x) * 0.5f;
-                float y = min.y + static_cast<float>(c->y * editor.editorZoom);
-                float halfW = 8.0f * editor.editorZoom;
-                float halfH = 12.0f * editor.editorZoom;
+                float y = min.y + static_cast<float>(c->y * editor.levelZoom);
+                float halfW = 8.0f * editor.levelZoom;
+                float halfH = 12.0f * editor.levelZoom;
 
                 ImVec2 rectMin(floorf(centerX - halfW), floorf(y - halfH));
                 ImVec2 rectMax(floorf(centerX + halfW), floorf(y + halfH));
