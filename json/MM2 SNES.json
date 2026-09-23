@@ -51,7 +51,7 @@
 				"layer3": ["36:4000-36:6000"]
 			},
 			"wily_5": {
-				"layer12": ["11:5800-11:5C00", "1C:8C00-1C:8E00", "1A:5400-1A:5600", "1A:5400-1A:6800", "37:0000-37:6000"],
+				"layer12": ["11:5800-11:5C00", "1C:8800-1C:8C00", "1A:5400-1A:6800", "37:0000-37:6000"],
 				"layer3": ["37:4000-37:6000"],
 				"common": 0
 			},
@@ -62,7 +62,7 @@
 			"common": {
 				"blank_tiles_ladders_doors_misc1": "1C:8000-1C:8400",
 				"blank_tiles_ladders_doors_misc2": "1C:8400-1C:8800",
-				"blank_tiles_ladders_doors_misc3": "1C:8C00-1C:9000"
+				"blank_tiles_ladders_doors_misc3": "1C:8800-1C:8C00"
 			}
 		},
 		"levels": {
@@ -475,11 +475,11 @@
 			},
 		  
 			"wily_1": {
-				"chip32x32": "20:8000",
-				"chip32x32_palette": "20:8400",
-				"map": "20:8500",
-				"collision": "20:9000",
-				"scroll": "20:B400",
+				"chip32x32": "28:8000",
+				"chip32x32_palette": "28:8400",
+				"map": "28:8500",
+				"collision": "28:9000",
+				"scroll": "28:B400",
 				"background": {
 					"tilemap": "3A:0000",
 					"scroll_flags": "28:BB80",
@@ -490,34 +490,34 @@
 					"speed": "28:AF80"
 				},
 				"enemy": {
-					"screen": "20:B600",
-					"x": "20:B700",
-					"y": "20:B800",
-					"type": "20:B900"
+					"screen": "28:B600",
+					"x": "28:B700",
+					"y": "28:B800",
+					"type": "28:B900"
 				},
 				"item": {
-					"screen": "20:BA00",
-					"x": "20:BA40",
-					"y": "20:BA80",
-					"type": "20:BAC0"
+					"screen": "28:BA00",
+					"x": "28:BA40",
+					"y": "28:BA80",
+					"type": "28:BAC0"
 				},
 				"midpoint": {
-					"start_y": "20:BB03",
-					"start_screen": "20:BB06",
-					"enemy_index": "20:BB0C",
-					"item_index": "20:BB12",
-					"map_back_high": "20:BB18",
-					"map_back_low": "20:BB1E",
-					"map_forward_high": "20:BB24",
-					"map_forward_low": "20:BB2A",
-					"start_scroll": "20:BB30",
-					"left_screen": "20:BB36",
-					"right_screen": "20:BB3C"
+					"start_y": "28:BB03",
+					"start_screen": "28:BB06",
+					"enemy_index": "28:BB0C",
+					"item_index": "28:BB12",
+					"map_back_high": "28:BB18",
+					"map_back_low": "28:BB1E",
+					"map_forward_high": "28:BB24",
+					"map_forward_low": "28:BB2A",
+					"start_scroll": "28:BB30",
+					"left_screen": "28:BB36",
+					"right_screen": "28:BB3C"
 				},
-				"pattern_table_setting": "20:BD00",
+				"pattern_table_setting": "28:BD00",
 				"palette": {
-					"anime_frame_count": "20:BF00",
-					"anime_frame_timer": "20:BF01",
+					"anime_frame_count": "28:BF00",
+					"anime_frame_timer": "28:BF01",
 					"data": "01:1800",
 					"anime_palette": "01:5470",
 					"layer3": "01:4FA0",
@@ -526,11 +526,11 @@
 			},
 
 			"wily_2": {
-				"chip32x32": "21:8000",
-				"chip32x32_palette": "21:8400",
-				"map": "21:8500",
-				"collision": "21:9000",
-				"scroll": "21:B400",
+				"chip32x32": "29:8000",
+				"chip32x32_palette": "29:8400",
+				"map": "29:8500",
+				"collision": "29:9000",
+				"scroll": "29:B400",
 				"background": {
 					"tilemap": "3A:2000",
 					"scroll_flags": "29:BB80",
@@ -541,34 +541,34 @@
 					"speed": "29:AF80"
 				},
 				"enemy": {
-					"screen": "21:B600",
-					"x": "21:B700",
-					"y": "21:B800",
-					"type": "21:B900"
+					"screen": "29:B600",
+					"x": "29:B700",
+					"y": "29:B800",
+					"type": "29:B900"
 				},
 				"item": {
-					"screen": "21:BA00",
-					"x": "21:BA40",
-					"y": "21:BA80",
-					"type": "21:BAC0"
+					"screen": "29:BA00",
+					"x": "29:BA40",
+					"y": "29:BA80",
+					"type": "29:BAC0"
 				},
 				"midpoint": {
-					"start_y": "21:BB03",
-					"start_screen": "21:BB06",
-					"enemy_index": "21:BB0C",
-					"item_index": "21:BB12",
-					"map_back_high": "21:BB18",
-					"map_back_low": "21:BB1E",
-					"map_forward_high": "21:BB24",
-					"map_forward_low": "21:BB2A",
-					"start_scroll": "21:BB30",
-					"left_screen": "21:BB36",
-					"right_screen": "21:BB3C"
+					"start_y": "29:BB03",
+					"start_screen": "29:BB06",
+					"enemy_index": "29:BB0C",
+					"item_index": "29:BB12",
+					"map_back_high": "29:BB18",
+					"map_back_low": "29:BB1E",
+					"map_forward_high": "29:BB24",
+					"map_forward_low": "29:BB2A",
+					"start_scroll": "29:BB30",
+					"left_screen": "29:BB36",
+					"right_screen": "29:BB3C"
 				},
-				"pattern_table_setting": "21:BD00",
+				"pattern_table_setting": "29:BD00",
 				"palette": {
-					"anime_frame_count": "21:BF00",
-					"anime_frame_timer": "21:BF01",
+					"anime_frame_count": "29:BF00",
+					"anime_frame_timer": "29:BF01",
 					"data": "01:1A00",
 					"anime_palette": "01:5490",
 					"layer3": "01:5040",
@@ -577,11 +577,11 @@
 			},
 
 			"wily_3": {
-				"chip32x32": "22:8000",
-				"chip32x32_palette": "22:8400",
-				"map": "22:8500",
-				"collision": "22:9000",
-				"scroll": "22:B400",
+				"chip32x32": "2A:8000",
+				"chip32x32_palette": "2A:8400",
+				"map": "2A:8500",
+				"collision": "2A:9000",
+				"scroll": "2A:B400",
 				"background": {
 					"tilemap": "3A:4000",
 					"scroll_flags": "2A:BB80",
@@ -592,34 +592,34 @@
 					"speed": "2A:AF80"
 				},
 				"enemy": {
-					"screen": "22:B600",
-					"x": "22:B700",
-					"y": "22:B800",
-					"type": "22:B900"
+					"screen": "2A:B600",
+					"x": "2A:B700",
+					"y": "2A:B800",
+					"type": "2A:B900"
 				},
 				"item": {
-					"screen": "22:BA00",
-					"x": "22:BA40",
-					"y": "22:BA80",
-					"type": "22:BAC0"
+					"screen": "2A:BA00",
+					"x": "2A:BA40",
+					"y": "2A:BA80",
+					"type": "2A:BAC0"
 				},
 				"midpoint": {
-					"start_y": "22:BB03",
-					"start_screen": "22:BB06",
-					"enemy_index": "22:BB0C",
-					"item_index": "22:BB12",
-					"map_back_high": "22:BB18",
-					"map_back_low": "22:BB1E",
-					"map_forward_high": "22:BB24",
-					"map_forward_low": "22:BB2A",
-					"start_scroll": "22:BB30",
-					"left_screen": "22:BB36",
-					"right_screen": "22:BB3C"
+					"start_y": "2A:BB03",
+					"start_screen": "2A:BB06",
+					"enemy_index": "2A:BB0C",
+					"item_index": "2A:BB12",
+					"map_back_high": "2A:BB18",
+					"map_back_low": "2A:BB1E",
+					"map_forward_high": "2A:BB24",
+					"map_forward_low": "2A:BB2A",
+					"start_scroll": "2A:BB30",
+					"left_screen": "2A:BB36",
+					"right_screen": "2A:BB3C"
 				},
-				"pattern_table_setting": "22:BD00",
+				"pattern_table_setting": "2A:BD00",
 				"palette": { 
-					"anime_frame_count": "22:BF00",
-					"anime_frame_timer": "22:BF01",
+					"anime_frame_count": "2A:BF00",
+					"anime_frame_timer": "2A:BF01",
 					"data": "01:1C00",
 					"anime_palette": "01:54B0",
 					"layer3": "01:50E0",
@@ -628,11 +628,11 @@
 			},
 
 			"wily_4": {
-				"chip32x32": "23:8000",
-				"chip32x32_palette": "23:8400",
-				"map": "23:8500",
-				"collision": "23:9000",
-				"scroll": "23:B400",
+				"chip32x32": "2B:8000",
+				"chip32x32_palette": "2B:8400",
+				"map": "2B:8500",
+				"collision": "2B:9000",
+				"scroll": "2B:B400",
 				"background": {
 					"tilemap": "3A:6000",
 					"scroll_flags": "2B:BB80",
@@ -643,34 +643,34 @@
 					"speed": "2B:AF80"
 				},
 				"enemy": {
-					"screen": "23:B600",
-					"x": "23:B700",
-					"y": "23:B800",
-					"type": "23:B900"
+					"screen": "2B:B600",
+					"x": "2B:B700",
+					"y": "2B:B800",
+					"type": "2B:B900"
 				},
 				"item": {
-					"screen": "23:BA00",
-					"x": "23:BA40",
-					"y": "23:BA80",
-					"type": "23:BAC0"
+					"screen": "2B:BA00",
+					"x": "2B:BA40",
+					"y": "2B:BA80",
+					"type": "2B:BAC0"
 				},
 				"midpoint": {
-					"start_y": "23:BB03",
-					"start_screen": "23:BB06",
-					"enemy_index": "23:BB0C",
-					"item_index": "23:BB12",
-					"map_back_high": "23:BB18",
-					"map_back_low": "23:BB1E",
-					"map_forward_high": "23:BB24",
-					"map_forward_low": "23:BB2A",
-					"start_scroll": "23:BB30",
-					"left_screen": "23:BB36",
-					"right_screen": "23:BB3C"
+					"start_y": "2B:BB03",
+					"start_screen": "2B:BB06",
+					"enemy_index": "2B:BB0C",
+					"item_index": "2B:BB12",
+					"map_back_high": "2B:BB18",
+					"map_back_low": "2B:BB1E",
+					"map_forward_high": "2B:BB24",
+					"map_forward_low": "2B:BB2A",
+					"start_scroll": "2B:BB30",
+					"left_screen": "2B:BB36",
+					"right_screen": "2B:BB3C"
 				},
-				"pattern_table_setting": "23:BD00",
+				"pattern_table_setting": "2B:BD00",
 				"palette": {
-					"anime_frame_count": "23:BF00",
-					"anime_frame_timer": "23:BF01",
+					"anime_frame_count": "2B:BF00",
+					"anime_frame_timer": "2B:BF01",
 					"data": "01:1E00",
 					"anime_palette": "01:54D0",
 					"layer3": "01:5180",
@@ -679,11 +679,11 @@
 			},
 
 			"wily_5": {
-				"chip32x32": "24:8000",
-				"chip32x32_palette": "24:8400",
-				"map": "24:8500",
-				"collision": "24:9000",
-				"scroll": "24:B400",
+				"chip32x32": "2C:8000",
+				"chip32x32_palette": "2C:8400",
+				"map": "2C:8500",
+				"collision": "2C:9000",
+				"scroll": "2C:B400",
 				"background": {
 					"tilemap": "3B:1000",
 					"scroll_flags": "2C:BB80",
@@ -694,34 +694,34 @@
 					"speed": "2C:AF80"
 				},
 				"enemy": {
-					"screen": "24:B600",
-					"x": "24:B700",
-					"y": "24:B800",
-					"type": "24:B900"
+					"screen": "2C:B600",
+					"x": "2C:B700",
+					"y": "2C:B800",
+					"type": "2C:B900"
 				},
 				"item": {
-					"screen": "24:BA00",
-					"x": "24:BA40",
-					"y": "24:BA80",
-					"type": "24:BAC0"
+					"screen": "2C:BA00",
+					"x": "2C:BA40",
+					"y": "2C:BA80",
+					"type": "2C:BAC0"
 				},
 				"midpoint": {
-					"start_y": "24:BB03",
-					"start_screen": "24:BB06",
-					"enemy_index": "24:BB0C",
-					"item_index": "24:BB12",
-					"map_back_high": "24:BB18",
-					"map_back_low": "24:BB1E",
-					"map_forward_high": "24:BB24",
-					"map_forward_low": "24:BB2A",
-					"start_scroll": "24:BB30",
-					"left_screen": "24:BB36",
-					"right_screen": "24:BB3C"
+					"start_y": "2C:BB03",
+					"start_screen": "2C:BB06",
+					"enemy_index": "2C:BB0C",
+					"item_index": "2C:BB12",
+					"map_back_high": "2C:BB18",
+					"map_back_low": "2C:BB1E",
+					"map_forward_high": "2C:BB24",
+					"map_forward_low": "2C:BB2A",
+					"start_scroll": "2C:BB30",
+					"left_screen": "2C:BB36",
+					"right_screen": "2C:BB3C"
 				},
-				"pattern_table_setting": "24:BD00",
+				"pattern_table_setting": "2C:BD00",
 				"palette": {
-					"anime_frame_count": "24:BF00",
-					"anime_frame_timer": "24:BF01",
+					"anime_frame_count": "2C:BF00",
+					"anime_frame_timer": "2C:BF01",
 					"data": "01:2000",
 					"anime_palette": "01:54F0",
 					"layer3": "01:5220",
@@ -730,11 +730,11 @@
 			},
 
 			"wily_6": {
-				"chip32x32": "25:8000",
-				"chip32x32_palette": "25:8400",
-				"map": "25:8500",
-				"collision": "25:9000",
-				"scroll": "25:B400",
+				"chip32x32": "2D:8000",
+				"chip32x32_palette": "2D:8400",
+				"map": "2D:8500",
+				"collision": "2D:9000",
+				"scroll": "2D:B400",
 				"background": {
 					"tilemap": "3B:2000",
 					"scroll_flags": "2D:BB80",
@@ -745,34 +745,34 @@
 					"speed": "2D:AF80"
 				},
 				"enemy": {
-					"screen": "25:B600",
-					"x": "25:B700",
-					"y": "25:B800",
-					"type": "25:B900"
+					"screen": "2D:B600",
+					"x": "2D:B700",
+					"y": "2D:B800",
+					"type": "2D:B900"
 				},
 				"item": {
-					"screen": "25:BA00",
-					"x": "25:BA40",
-					"y": "25:BA80",
-					"type": "25:BAC0"
+					"screen": "2D:BA00",
+					"x": "2D:BA40",
+					"y": "2D:BA80",
+					"type": "2D:BAC0"
 				},
 				"midpoint": {
-					"start_y": "25:BB03",
-					"start_screen": "25:BB06",
-					"enemy_index": "25:BB0C",
-					"item_index": "25:BB12",
-					"map_back_high": "25:BB18",
-					"map_back_low": "25:BB1E",
-					"map_forward_high": "25:BB24",
-					"map_forward_low": "25:BB2A",
-					"start_scroll": "25:BB30",
-					"left_screen": "25:BB36",
-					"right_screen": "25:BB3C"
+					"start_y": "2D:BB03",
+					"start_screen": "2D:BB06",
+					"enemy_index": "2D:BB0C",
+					"item_index": "2D:BB12",
+					"map_back_high": "2D:BB18",
+					"map_back_low": "2D:BB1E",
+					"map_forward_high": "2D:BB24",
+					"map_forward_low": "2D:BB2A",
+					"start_scroll": "2D:BB30",
+					"left_screen": "2D:BB36",
+					"right_screen": "2D:BB3C"
 				},
-				"pattern_table_setting": "25:BD00",
+				"pattern_table_setting": "2D:BD00",
 				"palette": {
-					"anime_frame_count": "25:BF00",
-					"anime_frame_timer": "25:BF01",
+					"anime_frame_count": "2D:BF00",
+					"anime_frame_timer": "2D:BF01",
 					"data": "01:2200",
 					"anime_palette": "01:5510",
 					"layer3": "01:52C0",

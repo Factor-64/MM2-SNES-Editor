@@ -45,6 +45,7 @@ void App::initSDL()
         throw std::runtime_error("Failed to create OpenGL context");
 
     SDL_GL_MakeCurrent(window, glContext);
+    //SDL_GL_SetSwapInterval(0);
 }
 
 void App::initGL()
@@ -386,9 +387,8 @@ void App::processAnimation(double& acc)
     }
 }
 
-void App::handleShortcuts()
+void App::handleShortcuts(ImGuiIO& io)
 {
-    ImGuiIO& io = ImGui::GetIO();
     bool ctrl = io.KeyCtrl;
     bool shift = io.KeyShift;
 
@@ -463,7 +463,8 @@ void App::run()
         ImGuiViewport* vp = ImGui::GetMainViewport();
         ImGui::DockSpaceOverViewport(vp->ID);
 
-        handleShortcuts();
+        ImGuiIO& io = ImGui::GetIO();
+        handleShortcuts(io);
 
         drawMenu(menuState, editor.romLoaded, editor.jsonLoaded && editor.paletteLoaded, (editor.mode == 0 || exportingAllData));
         processMenuActions();
@@ -500,7 +501,6 @@ void App::run()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        ImGuiIO& io = ImGui::GetIO();
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
             SDL_Window* backup_window = SDL_GL_GetCurrentWindow();
@@ -2364,7 +2364,7 @@ inline void DrawUnSelectedBox()
     ImGui::GetWindowDrawList()->AddRectFilled(p0, p1, IM_COL32(32, 32, 32, 255));
 }
 
-App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY, const int& tileW, const int& tileH, const float& scale, const Palette& pal, const int& psize, int& selectedColor, const int& trueWidth, const int& trueHeight)
+App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY, const int& tileW, const int& tileH, const float& scale, const Palette& pal, const int& psize, int& selectedColor, const int& trueWidth, const int& trueHeight, const bool end)
 {
     TileEditResult out{};
 
@@ -2435,7 +2435,8 @@ App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY,
     }
     out.down = down;
 
-    ImGui::EndGroup();
+    if(end)
+        ImGui::EndGroup();
     return out;
 }
 
@@ -2767,6 +2768,7 @@ void App::drawGraphicsWindow()
             glDeleteTextures(1, &tex.tex);
 
         ColorRGBA bgColor;
+        bgColor.a = 0;
 
         renderTileMapToRGBA(tilemap, tiles, imgPal ? editor.image.pals[editor.image.currentPal] : editor.aniPalettes[paletteIndex], bgColor, outPixels, tex.width, tex.height);
         uploadTilemapTextureRGBA(outPixels, tex);
@@ -2894,6 +2896,11 @@ void App::drawGraphicsWindow()
                 }
             }
             editor.rebuildGraphics = true;
+            editor.rebuildTileset = true;
+            editor.rebuildBackgrounds = true;
+            editor.rebuildEdit = true;
+            editor.rebuildView = true;
+            editor.rebuildMetaTileset = true;
         }
         label = "<< Replace Linked Tiles ";
         if (ImGui::Button(label.c_str(), ImVec2(200, 0)))
@@ -2933,6 +2940,12 @@ void App::drawGraphicsWindow()
             }
             if (editor.rebuildGraphics)
             {
+                editor.rebuildGraphics = true;
+                editor.rebuildTileset = true;
+                editor.rebuildBackgrounds = true;
+                editor.rebuildEdit = true;
+                editor.rebuildView = true;
+                editor.rebuildMetaTileset = true;
                 saveROMData(data);
                 ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
             }
@@ -2985,6 +2998,10 @@ void App::drawGraphicsWindow()
                 }
             }
             ImGui::EndCombo();
+        }
+        if (ImGui::Button("Clear Linked Tiles", ImVec2(200, 0)))
+        {
+            ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
         }
 
         ImGui::EndGroup();
@@ -3063,9 +3080,9 @@ void App::drawGraphicsWindow()
         ImGui::EndChild();
     }
     ImGui::SameLine();
-
     if (tileIdx >= 0)
     {
+        std::vector<Tile>* ts = hoveringImg ? &imgTiles : &tiles;
         static int selectedColor = 0;
         int selX = tileIdx % atlasWidth;
         int selY = tileIdx / atlasWidth;
@@ -3096,11 +3113,95 @@ void App::drawGraphicsWindow()
             scale *= 4;
         else
             scale *= 8;
-        TileEditResult result = DrawTileEdit((imgClicked ? editor.image.texture : tex), selX, selY, tileW, tileH, scale, pal, psize, selectedColor, trueWidth, trueHeight);
+        TileEditResult result = DrawTileEdit((imgClicked ? editor.image.texture : tex), selX, selY, tileW, tileH, scale, pal, psize, selectedColor, trueWidth, trueHeight, false);
+        
         static TileEditResult r;
         static DataChanged data;
-        static int lastTileIdx = -1;
         static int lastColor = -1;
+
+        static TileClipBoard clipboard;
+
+        if (ImGui::Button("Copy", ImVec2(50, 0)))
+        {
+            int amount = 1;
+            int idxA = tileIdx;
+            switch (shape)
+            {
+            case 1:
+                amount = 2;
+                idxA = idxA << 1;
+                break;
+            case 2:
+                amount = 4;
+                idxA *= 4;
+                break;
+            }
+            for (int i = 0; i < amount; ++i)
+            {
+                clipboard.tiles[i].pixels = ts->at(idxA + i).pixels;
+            }
+            clipboard.hasData = true;
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Paste",ImVec2(50, 0)) && clipboard.hasData)
+        {
+            int amount = 1;
+            int idxA = tileIdx;
+            switch (shape)
+            {
+            case 1:
+                amount = 2;
+                idxA = idxA << 1;
+                break;
+            case 2:
+                amount = 4;
+                idxA *= 4;
+                break;
+            }
+            for (int i = 0; i < amount; ++i)
+            {
+                Tile& t = ts->at(idxA + i);
+                t.pixels = clipboard.tiles[i].pixels;
+                MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
+                data.deltas.push_back(mem);
+            }
+            editor.rebuildGraphics = true;
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Merge", ImVec2(50,0)) && clipboard.hasData) 
+        {
+            int amount = 1;
+            int idxA = tileIdx;
+            switch (shape)
+            {
+            case 1:
+                amount = 2;
+                idxA = idxA << 1;
+                break;
+            case 2:
+                amount = 4;
+                idxA *= 4;
+                break;
+            }
+            for (int i = 0; i < amount; ++i)
+            {
+                Tile& t = ts->at(idxA + i);
+                Tile& t2 = clipboard.tiles[i];
+                for (int x = 0; x < t.pixels.size(); ++x)
+                {
+                    if (t2.pixels.at(x) != 0)
+                        t.pixels.at(x) = t2.pixels.at(x);
+                }
+                MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
+                data.deltas.push_back(mem);
+            }
+            editor.rebuildGraphics = true;
+        }
+
         if (result.clicked && (r.px != result.px || r.py != result.py || lastColor != selectedColor))
         {
             r = result;
@@ -3117,19 +3218,96 @@ void App::drawGraphicsWindow()
 
             int localX = result.px % 8;
             int localY = result.py % 8;
-            std::vector<Tile>* ts = hoveringImg ? &imgTiles : &tiles;
             Tile& t = ts->at(tempIdx);
             t.pixels[localY * 8 + localX] = selectedColor;
 
             MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
             data.deltas.push_back(mem);
+
             editor.rebuildGraphics = true;
         }
         else if (!data.deltas.empty() && !result.down)
         {
+            editor.rebuildTileset = true;
+            editor.rebuildBackgrounds = true;
+            editor.rebuildEdit = true;
+            editor.rebuildView = true;
+            editor.rebuildMetaTileset = true;
             saveROMData(data);
             data.deltas.clear();
         }
+        static int selectedColorIdx = 0;
+        static int toIdx = 0;
+        ImGui::SetNextItemWidth(50);
+        if (ImGui::BeginCombo("##CIDXF", std::to_string(selectedColorIdx).c_str()))
+        {
+            for (int i = 0; i < editor.aniPalettes[paletteIndex].size(); ++i)
+            {
+                bool selected = (i == selectedColorIdx);
+                if (ImGui::Selectable(std::to_string(i).c_str(), selected))
+                {
+                    selectedColorIdx = i;
+                }
+
+                if (selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Convert Color") && selectedColorIdx != toIdx)
+        {
+            palChange = true;
+            editor.rebuildGraphics = true;
+            int amount = 1;
+            int idxA = tileIdx;
+            DataChanged d;
+            switch (shape)
+            {
+            case 1:
+                amount = 2;
+                idxA = idxA << 1;
+                break;
+            case 2:
+                amount = 4;
+                idxA *= 4;
+                break;
+            }
+            for (int i = 0; i < amount; ++i)
+            {
+                Tile& t = ts->at(idxA + i);
+                for (int x = 0; x < t.pixels.size(); ++x)
+                {
+                    if (t.pixels[x] == selectedColorIdx)
+                        t.pixels[x] = toIdx;
+                }
+                MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
+                d.deltas.push_back(mem);
+            }
+            saveROMData(d);
+        }
+        ImGui::SameLine();
+
+        ImGui::SetNextItemWidth(50);
+        if (ImGui::BeginCombo("##CIDXT", std::to_string(toIdx).c_str()))
+        {
+            for (int i = 0; i < editor.aniPalettes[paletteIndex].size(); ++i)
+            {
+                bool selected = (i == toIdx);
+                if (ImGui::Selectable(std::to_string(i).c_str(), selected))
+                {
+                    toIdx = i;
+                }
+
+                if (selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::EndGroup();
     }
 
     ImGui::End();

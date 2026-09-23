@@ -25,7 +25,7 @@ MemoryDelta makeMemoryDelta(std::vector<uint8_t>& rom, uint32_t address, const s
 
 void saveDataToROM(UndoStack& undoStack, RedoStack& redoStack, std::vector<uint8_t>& rom, DataChanged& change)
 {
-    std::println("Saving data {}", change.deltas.size());
+    //std::println("Saving data {}", change.deltas.size());
 
     if (change.deltas.empty()) return;
 
@@ -42,7 +42,7 @@ void saveDataToROM(UndoStack& undoStack, RedoStack& redoStack, std::vector<uint8
 
 bool undo(UndoStack& undoStack, RedoStack& redoStack, std::vector<uint8_t>& rom)
 {
-    std::println("Undoing {}", undoStack.size());
+    //std::println("Undoing {}", undoStack.size());
     if (undoStack.empty())
         return false;
 
@@ -58,7 +58,7 @@ bool undo(UndoStack& undoStack, RedoStack& redoStack, std::vector<uint8_t>& rom)
 
 bool redo(UndoStack& undoStack, RedoStack& redoStack, std::vector<uint8_t>& rom)
 {
-    std::println("Redoing {}", redoStack.size());
+    //std::println("Redoing {}", redoStack.size());
     if (redoStack.empty())
         return false;
 

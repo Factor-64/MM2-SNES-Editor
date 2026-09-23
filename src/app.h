@@ -84,6 +84,11 @@ private:
         int type = 0;
     };
 
+    struct TileClipBoard {
+        bool hasData = false;
+        std::array<Tile, 4> tiles;
+    };
+
     struct ImageData {
         Palettes pals;
         std::vector<Tile> tiles4bpp;
@@ -232,12 +237,12 @@ private:
     MemoryDelta PaintTileBackground(std::vector<BGTileData>& data, int tileX, int tileY, int atlasWidth, const bool color, const bool subPal);
     void updateScrollPreview();
     void drawGraphicsWindow();
-    TileEditResult DrawTileEdit(TilemapTexture& tex, int& selX, int& selY, const int& tileW, const int& tileH, const float& scale, const Palette& pal, const int& psize, int& selectedColor, const int& trueWidth, const int& trueHeight);
+    TileEditResult DrawTileEdit(TilemapTexture& tex, int& selX, int& selY, const int& tileW, const int& tileH, const float& scale, const Palette& pal, const int& psize, int& selectedColor, const int& trueWidth, const int& trueHeight, const bool end = true);
     void saveROMData(MemoryDelta& m);
     void saveROMData(DataChanged& d);
     void processAnimation(double& acc);
     void processMenuActions();
-    void handleShortcuts();
+    void handleShortcuts(ImGuiIO& io);
     void handleFileDialogResult(const std::string& key);
     void processFileDialogs();
     void handleExport(MenuState state);
