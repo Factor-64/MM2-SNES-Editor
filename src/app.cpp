@@ -124,11 +124,19 @@ void App::handleFileDialogResult(const std::string& key)
         editor.rom.clear();
         editor.rom.assign(std::istreambuf_iterator<char>(f), {});
 
+        if (editor.rom.size() < 4194304)
+        {
+            editor.romLoaded = false;
+            return;
+        }
+
         if (editor.rom.size() % 0x4000 == 512)
             editor.rom.erase(editor.rom.begin(), editor.rom.begin() + 512);
 
         editor.header = readSNESHeader(editor.rom);
         editor.isHiROM = (editor.header.mapMode & 0x10) != 0;
+        editor.undoStack.clear();
+        editor.redoStack.clear();
         editor.romLoaded = true;
         editor.rebuildData = true;
     }
@@ -2432,6 +2440,10 @@ App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY,
         out.clicked = true;
         out.px = int((mouse.x - bigMin.x) / (scale * 2.0f));
         out.py = int((mouse.y - bigMin.y) / (scale * 2.0f));
+        if (out.px < 0 || out.px >= tileW || out.py < 0 || out.py >= tileH)
+        {
+            out.clicked = false;
+        }
     }
     out.down = down;
 
@@ -2542,6 +2554,7 @@ void App::drawGraphicsWindow()
     static TilemapTexture tex;
     static uint8_t shape = 0;
     static bool imgPal = false;
+    static bool refresh = false;
     static bool imgClicked = false;
     static bool continueCopy = false;
     static int paletteIndex = 0;
@@ -2656,6 +2669,7 @@ void App::drawGraphicsWindow()
             if (ImGui::Selectable(displayList[i], selected))
             {
                 shape = i;
+                tileIdx = -1;
                 editor.rebuildGraphics = true;
             }
         }
@@ -2755,12 +2769,16 @@ void App::drawGraphicsWindow()
     {
         if (!palChange)
             ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
-        editor.image.reload = editor.rebuildGraphics;
+        editor.image.reload = true;
         editor.rebuildGraphics = false;
         range.end = range.start + range_max;
-        int mapWidth = shape == 2 ? 8 : 16;
-        tiles = decodeTileRange(range, editor.rom, formatSize[tileDisplay]);
-        TileMap tilemap = makeTileMap(tiles, mapWidth, shape);
+        static TileMap tilemap;
+        if (!refresh)
+        {
+            int mapWidth = shape == 2 ? 8 : 16;
+            tiles = decodeTileRange(range, editor.rom, formatSize[tileDisplay]);
+            tilemap = makeTileMap(tiles, mapWidth, shape);
+        }
 
         std::vector<ColorRGBA> outPixels;
 
@@ -2788,8 +2806,12 @@ void App::drawGraphicsWindow()
             editor.image.reload = false;
             if (!palChange)
                 ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
-            int mapWidth = shape == 2 ? 8 : 16;
-            TileMap tilemap = makeTileMap(imgTiles, mapWidth, shape);
+            static TileMap tilemap;
+            if (!refresh)
+            {
+                int mapWidth = shape == 2 ? 8 : 16;
+                tilemap = makeTileMap(imgTiles, mapWidth, shape);
+            }
 
             std::vector<ColorRGBA> outPixels;
 
@@ -3118,6 +3140,48 @@ void App::drawGraphicsWindow()
         static TileEditResult r;
         static DataChanged data;
         static int lastColor = -1;
+        static int lastIdx = -1;
+
+        if (result.clicked && (r.px != result.px || r.py != result.py || lastColor != selectedColor || lastIdx != tileIdx))
+        {
+            r = result;
+            lastColor = selectedColor;
+            lastIdx = tileIdx;
+            int tempIdx = tileIdx;
+            int blockX = result.px / 8;
+            int blockY = result.py / 8;
+            switch (shape)
+            {
+            case 1:
+                tempIdx = tempIdx << 1;
+                tempIdx += blockY;
+                break;
+            case 2:
+                tempIdx *= 4;
+                tempIdx += blockX + blockY * 2;
+                break;
+            }
+
+            int localX = result.px % 8;
+            int localY = result.py % 8;
+
+            Tile& t = ts->at(tempIdx);
+            t.pixels[localY * 8 + localX] = selectedColor;
+
+            MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
+            data.deltas.push_back(mem);
+
+            editor.rebuildGraphics = true;
+            refresh = true;
+        }
+        else if (!data.deltas.empty() && !result.down)
+        {
+            editor.rebuildGraphics = true;
+            editor.rebuildData = true;
+            refresh = false;
+            saveROMData(data);
+            data.deltas.clear();
+        }
 
         static TileClipBoard clipboard;
 
@@ -3147,6 +3211,7 @@ void App::drawGraphicsWindow()
 
         if (ImGui::Button("Paste",ImVec2(50, 0)) && clipboard.hasData)
         {
+            DataChanged d;
             int amount = 1;
             int idxA = tileIdx;
             switch (shape)
@@ -3165,15 +3230,18 @@ void App::drawGraphicsWindow()
                 Tile& t = ts->at(idxA + i);
                 t.pixels = clipboard.tiles[i].pixels;
                 MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
-                data.deltas.push_back(mem);
+                d.deltas.push_back(mem);
             }
+            saveROMData(d);
             editor.rebuildGraphics = true;
+            editor.rebuildData = true;
         }
 
         ImGui::SameLine();
 
         if (ImGui::Button("Merge", ImVec2(50,0)) && clipboard.hasData) 
         {
+            DataChanged d;
             int amount = 1;
             int idxA = tileIdx;
             switch (shape)
@@ -3197,45 +3265,13 @@ void App::drawGraphicsWindow()
                         t.pixels.at(x) = t2.pixels.at(x);
                 }
                 MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
-                data.deltas.push_back(mem);
+                d.deltas.push_back(mem);
             }
+            saveROMData(d);
             editor.rebuildGraphics = true;
+            editor.rebuildData = true;
         }
 
-        if (result.clicked && (r.px != result.px || r.py != result.py || lastColor != selectedColor))
-        {
-            r = result;
-            lastColor = selectedColor;
-            int tempIdx = tileIdx;
-
-            int blockX = result.px / 8;
-            int blockY = result.py / 8;
-
-            if (shape == 1)
-                tempIdx += blockY;
-            else if (shape == 2)
-                tempIdx += blockX + blockY * 2;
-
-            int localX = result.px % 8;
-            int localY = result.py % 8;
-            Tile& t = ts->at(tempIdx);
-            t.pixels[localY * 8 + localX] = selectedColor;
-
-            MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
-            data.deltas.push_back(mem);
-
-            editor.rebuildGraphics = true;
-        }
-        else if (!data.deltas.empty() && !result.down)
-        {
-            editor.rebuildTileset = true;
-            editor.rebuildBackgrounds = true;
-            editor.rebuildEdit = true;
-            editor.rebuildView = true;
-            editor.rebuildMetaTileset = true;
-            saveROMData(data);
-            data.deltas.clear();
-        }
         static int selectedColorIdx = 0;
         static int toIdx = 0;
         ImGui::SetNextItemWidth(50);
@@ -3726,10 +3762,12 @@ void App::drawTileView()
             static TileEditResult r;
             static DataChanged data;
             static int lastColor = -1;
-            if (result.clicked && (r.px != result.px || r.py != result.py || lastColor != editor.selectedColor))
+            static int lastIdx = -1;
+            if (result.clicked && (r.px != result.px || r.py != result.py || lastColor != editor.selectedColor || lastIdx != editor.selectedTile))
             {
                 r = result;
                 lastColor = editor.selectedColor;
+                lastIdx = editor.selectedTile;
                 Tile* t;
                 if (tileSize == 16)
                 {
