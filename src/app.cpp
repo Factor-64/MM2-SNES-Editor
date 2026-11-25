@@ -2397,6 +2397,15 @@ App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY,
     const ImVec2 bigMin = ImGui::GetItemRectMin();
     const ImVec2 bigMax = ImGui::GetItemRectMax();
 
+    ImGui::SetCursorScreenPos(bigMin);
+
+    ImGui::PushID(this);
+    ImGui::InvisibleButton("##tileedit", bigSize);
+    ImGui::PopID();
+
+    const bool tileHovered = ImGui::IsItemHovered();
+    const bool tileActive = ImGui::IsItemActive();
+
     DrawGrid(dl, bigMin, bigMax, scale * 2.0f, scale * 2.0f);
 
     for (int i = 0; i < psize; ++i)
@@ -2429,13 +2438,9 @@ App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY,
 
     const ImVec2 mouse = ImGui::GetMousePos();
 
-    const bool inside =
-        mouse.x >= bigMin.x && mouse.x < bigMax.x &&
-        mouse.y >= bigMin.y && mouse.y < bigMax.y;
-
     const bool down = ImGui::IsMouseDown(ImGuiMouseButton_Left);
 
-    if (inside && down)
+    if (tileActive && down)
     {
         out.clicked = true;
         out.px = int((mouse.x - bigMin.x) / (scale * 2.0f));
@@ -2535,6 +2540,38 @@ inline ImU32 ColorFromIndex(int idx)
     const ImU32 B = (ImU32)(b * 255.0f);
 
     return IM_COL32(R, G, B, 255);
+}
+
+void FlipTileHorizontal(Tile& t)
+{
+    constexpr int W = 8;
+    constexpr int H = 8;
+
+    for (int y = 0; y < H; ++y)
+    {
+        for (int x = 0; x < W / 2; ++x)
+        {
+            std::swap(
+                t.pixels[y * W + x],
+                t.pixels[y * W + (W - 1 - x)]);
+        }
+    }
+}
+
+void FlipTileVertical(Tile& t)
+{
+    constexpr int W = 8;
+    constexpr int H = 8;
+
+    for (int y = 0; y < H / 2; ++y)
+    {
+        for (int x = 0; x < W; ++x)
+        {
+            std::swap(
+                t.pixels[y * W + x],
+                t.pixels[(H - 1 - y) * W + x]);
+        }
+    }
 }
 
 void App::drawGraphicsWindow()
@@ -2918,11 +2955,7 @@ void App::drawGraphicsWindow()
                 }
             }
             editor.rebuildGraphics = true;
-            editor.rebuildTileset = true;
-            editor.rebuildBackgrounds = true;
-            editor.rebuildEdit = true;
-            editor.rebuildView = true;
-            editor.rebuildMetaTileset = true;
+            editor.rebuildData = true;
         }
         label = "<< Replace Linked Tiles ";
         if (ImGui::Button(label.c_str(), ImVec2(200, 0)))
@@ -2963,11 +2996,7 @@ void App::drawGraphicsWindow()
             if (editor.rebuildGraphics)
             {
                 editor.rebuildGraphics = true;
-                editor.rebuildTileset = true;
-                editor.rebuildBackgrounds = true;
-                editor.rebuildEdit = true;
-                editor.rebuildView = true;
-                editor.rebuildMetaTileset = true;
+                editor.rebuildData = true;
                 saveROMData(data);
                 ClearAllLinks(linkFromTile, linkFromImgTile, linkingTile, linkingPRG);
             }
@@ -3272,6 +3301,69 @@ void App::drawGraphicsWindow()
             editor.rebuildData = true;
         }
 
+        if (ImGui::Button("Horizontal Flip", ImVec2(120, 0)))
+        {
+            DataChanged d;
+            int amount = 1;
+            int idxA = tileIdx;
+            switch (shape)
+            {
+            case 1:
+                amount = 2;
+                idxA = idxA << 1;
+                break;
+            case 2:
+                amount = 4;
+                idxA *= 4;
+                std::swap(ts->at(idxA).pixels, ts->at(idxA + 1).pixels);
+                std::swap(ts->at(idxA + 2).pixels, ts->at(idxA + 3).pixels);
+                break;
+            }
+            for (int i = 0; i < amount; ++i)
+            {
+                Tile& t = ts->at(idxA + i);
+                FlipTileHorizontal(t);
+                MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
+                d.deltas.push_back(mem);
+            }
+            saveROMData(d);
+            editor.rebuildGraphics = true;
+            editor.rebuildData = true;
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Vertical Flip", ImVec2(120, 0)))
+        {
+            DataChanged d;
+            int amount = 1;
+            int idxA = tileIdx;
+            switch (shape)
+            {
+            case 1:
+                amount = 2;
+                idxA = idxA << 1;
+                std::swap(ts->at(idxA).pixels, ts->at(idxA + 1).pixels);
+                break;
+            case 2:
+                amount = 4;
+                idxA *= 4;
+                std::swap(ts->at(idxA).pixels, ts->at(idxA + 2).pixels);
+                std::swap(ts->at(idxA + 1).pixels, ts->at(idxA + 3).pixels);
+                break;
+            }
+            for (int i = 0; i < amount; ++i)
+            {
+                Tile& t = ts->at(idxA + i);
+                FlipTileVertical(t);
+                MemoryDelta mem = saveTileToROM(t, editor.rom, is2bpp);
+                d.deltas.push_back(mem);
+            }
+            saveROMData(d);
+            editor.rebuildGraphics = true;
+            editor.rebuildData = true;
+        }
+
         static int selectedColorIdx = 0;
         static int toIdx = 0;
         ImGui::SetNextItemWidth(50);
@@ -3295,8 +3387,6 @@ void App::drawGraphicsWindow()
 
         if (ImGui::Button("Convert Color") && selectedColorIdx != toIdx)
         {
-            palChange = true;
-            editor.rebuildGraphics = true;
             int amount = 1;
             int idxA = tileIdx;
             DataChanged d;
@@ -3323,6 +3413,8 @@ void App::drawGraphicsWindow()
                 d.deltas.push_back(mem);
             }
             saveROMData(d);
+            editor.rebuildGraphics = true;
+            editor.rebuildData = true;
         }
         ImGui::SameLine();
 
@@ -3538,7 +3630,7 @@ void App::drawEditMode()
                     int metaY = tileY / 2;
                     int metaTileIndex = metaY * metaTilesPerRow + metaX;
 
-                    if (metaTileIndex > 0 && metaTileIndex < editor.levelMetaTiles.size())
+                    if (metaTileIndex >= 0 && metaTileIndex < editor.levelMetaTiles.size())
                     {
                         int localX = tileX % 2;
                         int localY = tileY % 2;
@@ -3550,7 +3642,6 @@ void App::drawEditMode()
                 default:
                     break;
             }
-
         }
     }
 
@@ -3731,7 +3822,9 @@ void App::drawTileView()
         GetTileUnderMouse(min, trueSize, trueSize, tileX, tileY);
         DrawHoverHighlight(dl, min, trueSize, trueSize, tileX, tileY);
         if (ImGui::IsItemClicked())
+        {
             SelectTileFromClick(editor.selectedTile, tileX, tileY, atlasWidth);
+        }
     }
 
     if (editor.selectedTile >= 0)
@@ -3740,64 +3833,64 @@ void App::drawTileView()
         int selY = editor.selectedTile / atlasWidth;
         DrawSelectedOutline(dl, min, trueSize, trueSize, selX, selY);
 
-        if (tileSize < 32)
+        Palette pal;
+        int psize = 4;
+        bool is2bpp = editor.editMode == EM_Layer3;
+        if (is2bpp)
         {
-            Palette pal;
-            int psize = 4;
-            bool is2bpp = editor.editMode == EM_Layer3;
-            if (is2bpp)
+            pal = editor.subPalettes[editor.subPaletteIndex];
+        }
+        else
+        {
+            pal = editor.aniPalettes[editor.paletteIndex];
+            psize = pal.size();
+        }
+
+        scale = 8.0f * editor.tilesetZoom;
+        if (tileSize == 8)
+            scale *= 2;
+        TileEditResult result = DrawTileEdit(editor.tileset, selX, selY, trueSize, trueSize, scale, pal, psize, editor.selectedColor, trueWidth, trueHeight);
+        static TileEditResult r;
+        static DataChanged data;
+        static int lastColor = -1;
+        static int lastIdx = -1;
+        if (result.clicked && (r.px != result.px || r.py != result.py || lastColor != editor.selectedColor || lastIdx != editor.selectedTile))
+        {
+            r = result;
+            lastColor = editor.selectedColor;
+            lastIdx = editor.selectedTile;
+            Tile* t;
+            if (tileSize == 16)
             {
-                pal = editor.subPalettes[editor.subPaletteIndex];
+                MacroTile& mt = editor.levelMacroTiles[editor.selectedTile];
+
+                TileRef& tr = result.px > 7 ? mt.right : mt.left;
+
+                int tileIndex = result.py > 7 ? tr.index + 1 : tr.index;
+
+                t = &editor.levelTiles[tileIndex];
             }
             else
             {
-                pal = editor.aniPalettes[editor.paletteIndex];
-                psize = pal.size();
+                t = &editor.levelTiles[editor.selectedTile];
             }
+            result.py = result.py % 8;
+            result.px = result.px % 8;
 
-            scale = 8.0f * editor.tilesetZoom;
-            if (tileSize == 8)
-                scale *= 2;
-            TileEditResult result = DrawTileEdit(editor.tileset, selX, selY, trueSize, trueSize, scale, pal, psize, editor.selectedColor, trueWidth, trueHeight);
-            static TileEditResult r;
-            static DataChanged data;
-            static int lastColor = -1;
-            static int lastIdx = -1;
-            if (result.clicked && (r.px != result.px || r.py != result.py || lastColor != editor.selectedColor || lastIdx != editor.selectedTile))
-            {
-                r = result;
-                lastColor = editor.selectedColor;
-                lastIdx = editor.selectedTile;
-                Tile* t;
-                if (tileSize == 16)
-                {
-                    MacroTile& mt = editor.levelMacroTiles[editor.selectedTile];
+            t->pixels[result.py * 8 + result.px] = editor.selectedColor;
 
-                    TileRef& tr = result.px > 7 ? mt.right : mt.left;
-
-                    int tileIndex = result.py > 7 ? tr.index + 1 : tr.index;
-
-                    t = &editor.levelTiles[tileIndex];
-                }
-                else
-                {
-                    t = &editor.levelTiles[editor.selectedTile];
-                }
-                result.py = result.py % 8;
-                result.px = result.px % 8;
-
-                t->pixels[result.py * 8 + result.px] = editor.selectedColor;
-
-                MemoryDelta mem = saveTileToROM(*t, editor.rom, is2bpp);
-                data.deltas.push_back(mem);
-                editor.rebuildTileset = true;
-                editor.rebuildEdit = true;
-            }
-            else if (!data.deltas.empty() && !result.down)
-            {
-                saveROMData(data);
-                data.deltas.clear();
-            }
+            MemoryDelta mem = saveTileToROM(*t, editor.rom, is2bpp);
+            data.deltas.push_back(mem);
+            editor.rebuildTileset = true;
+            editor.rebuildEdit = true;
+            editor.rebuildView = true;
+            editor.rebuildGraphics = true;
+            editor.rebuildMetaTileset = true;
+        }
+        else if (!data.deltas.empty() && !result.down)
+        {
+            saveROMData(data);
+            data.deltas.clear();
         }
     }
 
