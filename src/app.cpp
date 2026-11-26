@@ -1971,7 +1971,7 @@ inline void GetTileUnderMouse(const ImVec2& min, int w, int h, int& outX, int& o
     outY = static_cast<int>(relY / h);
 }
 
-inline void DrawGrid(ImDrawList* dl, const ImVec2& min, const ImVec2& max, int w, int h, ImU32 color = IM_COL32(80, 80, 80, 128))
+void DrawGrid(ImDrawList* dl, const ImVec2& min, const ImVec2& max, int w, int h, ImU32 color = IM_COL32(80, 80, 80, 128))
 {
     const float minX = min.x;
     const float minY = min.y;
@@ -1981,13 +1981,17 @@ inline void DrawGrid(ImDrawList* dl, const ImVec2& min, const ImVec2& max, int w
     const int cols = int((maxX - minX) / w);
     const int rows = int((maxY - minY) / h);
 
-    float x = minX;
-    for (int i = 0; i <= cols; ++i, x += w)
+    for (int i = 0; i <= cols; ++i)
+    {
+        float x = minX + i * w;
         dl->AddLine(ImVec2(x, minY), ImVec2(x, maxY), color);
+    }
 
-    float y = minY;
-    for (int i = 0; i <= rows; ++i, y += h)
+    for (int i = 0; i <= rows; ++i)
+    {
+        float y = minY + i * h;
         dl->AddLine(ImVec2(minX, y), ImVec2(maxX, y), color);
+    }
 }
 
 inline void DrawHoverHighlight(ImDrawList* dl, const ImVec2& min, int w, int h, int x, int y)
@@ -2372,19 +2376,19 @@ inline void DrawUnSelectedBox()
     ImGui::GetWindowDrawList()->AddRectFilled(p0, p1, IM_COL32(32, 32, 32, 255));
 }
 
-App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY, const int& tileW, const int& tileH, const float& scale, const Palette& pal, const int& psize, int& selectedColor, const int& trueWidth, const int& trueHeight, const bool end)
+App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY, const int& tileW, const int& tileH, const float& scale, const Palette& pal, const int& psize, int& selectedColor, const bool end)
 {
     TileEditResult out{};
 
-    const float invW = 1.0f / float(trueWidth);
-    const float invH = 1.0f / float(trueHeight);
+    const float invW = 1.0f / tex.width;
+    const float invH = 1.0f / tex.height;
 
     const float u0 = float(selX * tileW) * invW;
     const float v0 = float(selY * tileH) * invH;
     const float u1 = float((selX + 1) * tileW) * invW;
     const float v1 = float((selY + 1) * tileH) * invH;
 
-    const ImVec2 bigSize(tileW * scale, tileH * scale);
+    const ImVec2 bigSize((tileW * scale) * 2, (tileH * scale) * 2);
 
     ImGui::SameLine();
     ImGui::BeginGroup();
@@ -2406,7 +2410,7 @@ App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY,
     const bool tileHovered = ImGui::IsItemHovered();
     const bool tileActive = ImGui::IsItemActive();
 
-    DrawGrid(dl, bigMin, bigMax, scale * 2.0f, scale * 2.0f);
+    DrawGrid(dl, bigMin, bigMax, scale * 2, scale * 2);
 
     for (int i = 0; i < psize; ++i)
     {
@@ -2440,7 +2444,7 @@ App::TileEditResult App::DrawTileEdit(TilemapTexture& tex, int& selX, int& selY,
 
     const bool down = ImGui::IsMouseDown(ImGuiMouseButton_Left);
 
-    if (tileActive && down)
+    if (tileHovered && tileActive && down)
     {
         out.clicked = true;
         out.px = int((mouse.x - bigMin.x) / (scale * 2.0f));
@@ -3164,7 +3168,7 @@ void App::drawGraphicsWindow()
             scale *= 4;
         else
             scale *= 8;
-        TileEditResult result = DrawTileEdit((imgClicked ? editor.image.texture : tex), selX, selY, tileW, tileH, scale, pal, psize, selectedColor, trueWidth, trueHeight, false);
+        TileEditResult result = DrawTileEdit((imgClicked ? editor.image.texture : tex), selX, selY, tileSize[shape][0], tileSize[shape][1], scale, pal, psize, selectedColor, false);
         
         static TileEditResult r;
         static DataChanged data;
@@ -3849,7 +3853,7 @@ void App::drawTileView()
         scale = 8.0f * editor.tilesetZoom;
         if (tileSize == 8)
             scale *= 2;
-        TileEditResult result = DrawTileEdit(editor.tileset, selX, selY, trueSize, trueSize, scale, pal, psize, editor.selectedColor, trueWidth, trueHeight);
+        TileEditResult result = DrawTileEdit(editor.tileset, selX, selY, tileSize, tileSize, scale, pal, psize, editor.selectedColor);
         static TileEditResult r;
         static DataChanged data;
         static int lastColor = -1;
@@ -3869,6 +3873,10 @@ void App::drawTileView()
                 int tileIndex = result.py > 7 ? tr.index + 1 : tr.index;
 
                 t = &editor.levelTiles[tileIndex];
+            }
+            else if(is2bpp)
+            {
+                t = &editor.layer3Tiles[editor.selectedTile];
             }
             else
             {
